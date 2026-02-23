@@ -8,6 +8,7 @@ import (
 
 	"github.com/ca17/teamsacs/app"
 	"github.com/ca17/teamsacs/common"
+	"github.com/ca17/teamsacs/common/cwmp"
 	"github.com/ca17/teamsacs/common/web"
 	"github.com/ca17/teamsacs/common/zaplog/log"
 	"github.com/ca17/teamsacs/events"
@@ -137,6 +138,111 @@ func InitRouter() {
 				return nil
 			}
 		}
+	})
+
+	// WiFi settings edit endpoint
+	webserver.POST("/admin/supervise/wifi/set", func(c echo.Context) error {
+		var devid string
+		var ssidIdx int
+		common.Must(web.NewParamReader(c).
+			ReadRequiedString(&devid, "devid").
+			ReadInt(&ssidIdx, "ssid_idx", 0).LastError)
+		ssidName := c.FormValue("ssid")
+		password := c.FormValue("password")
+		channel := c.FormValue("channel")
+		enable := c.FormValue("enable")
+
+		if ssidIdx < 1 || ssidIdx > 16 {
+			return c.JSON(http.StatusOK, web.RestError("Invalid SSID index"))
+		}
+
+		var dev models.NetCpe
+		err := app.GDB().Where("id=?", devid).First(&dev).Error
+		if err != nil {
+			return c.JSON(http.StatusOK, web.RestError("Device not found"))
+		}
+
+		cpe := app.GApp().CwmpTable().GetCwmpCpe(dev.Sn)
+		_ = cpe // ensure CwmpCpe exists in memory
+
+		err = cwmpSetWifiParams(dev, ssidIdx, ssidName, password, channel, enable)
+		if err != nil {
+			return c.JSON(http.StatusOK, web.RestError(fmt.Sprintf("Failed to create WiFi task: %s", err.Error())))
+		}
+
+		webserver.PubOpLog(c, fmt.Sprintf(
+			"Set WiFi params for %s: SSID[%d] ssid=%s channel=%s",
+			dev.Sn, ssidIdx, ssidName, channel))
+
+		return c.JSON(200, web.RestSucc("WiFi settings command sent, will take effect after device applies changes"))
+	})
+
+	webserver.POST("/admin/supervise/wan/set", func(c echo.Context) error {
+		var devid string
+		var devIdx, connIdx int
+		common.Must(web.NewParamReader(c).
+			ReadRequiedString(&devid, "devid").
+			ReadInt(&devIdx, "dev_idx", 0).
+			ReadInt(&connIdx, "conn_idx", 0).LastError)
+		connType := c.FormValue("conn_type")
+		username := c.FormValue("username")
+		password := c.FormValue("password")
+		enable := c.FormValue("enable")
+		ipMode := c.FormValue("ip_mode")
+		vlanID := c.FormValue("vlan_id")
+
+		if devIdx < 1 || connIdx < 1 {
+			return c.JSON(http.StatusOK, web.RestError("Invalid WAN connection index"))
+		}
+
+		var dev models.NetCpe
+		err := app.GDB().Where("id=?", devid).First(&dev).Error
+		if err != nil {
+			return c.JSON(http.StatusOK, web.RestError("Device not found"))
+		}
+
+		cpe := app.GApp().CwmpTable().GetCwmpCpe(dev.Sn)
+		_ = cpe
+
+		err = cwmpSetWanParams(dev, devIdx, connIdx, connType, username, password, enable, ipMode, vlanID)
+		if err != nil {
+			return c.JSON(http.StatusOK, web.RestError(fmt.Sprintf("Failed to create WAN task: %s", err.Error())))
+		}
+
+		webserver.PubOpLog(c, fmt.Sprintf(
+			"Set WAN params for %s: dev=%d conn=%d type=%s",
+			dev.Sn, devIdx, connIdx, connType))
+
+		return c.JSON(200, web.RestSucc("WAN settings command sent"))
+	})
+
+	webserver.POST("/admin/supervise/reboot", func(c echo.Context) error {
+		var devid string
+		common.Must(web.NewParamReader(c).
+			ReadRequiedString(&devid, "devid").LastError)
+
+		var dev models.NetCpe
+		err := app.GDB().Where("id=?", devid).First(&dev).Error
+		if err != nil {
+			return c.JSON(http.StatusOK, web.RestError("Device not found"))
+		}
+
+		session := "Reboot-" + common.UUID()
+		rebootMsg := &cwmp.Reboot{ID: session}
+		err = app.GDB().Create(&models.CwmpPresetTask{
+			ID: common.UUIDint64(), PresetId: 0, Event: "reboot", Oid: "N/A",
+			Name: "Reboot", Onfail: "ignore", Session: session, Sn: dev.Sn,
+			Request: string(rebootMsg.CreateXML()), Status: "pending",
+			ExecTime: time.Now(), CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}).Error
+		if err != nil {
+			return c.JSON(http.StatusOK, web.RestError("Failed to create reboot task"))
+		}
+
+		go connectDeviceAuth(session, dev)
+
+		webserver.PubOpLog(c, fmt.Sprintf("Reboot device %s", dev.Sn))
+		return c.JSON(200, web.RestSucc("Reboot command sent"))
 	})
 
 }

@@ -76,7 +76,7 @@ func execCwmpFactoryConfiguration(c echo.Context, id string, deviceId int64, ses
 				Name:       "Cwmp FactoryConfiguration Task",
 				NoMore:     0,
 				CommandKey: session,
-				FileType:   "X MIKROTIK Factory Configuration File",
+				FileType:   getFactoryConfigFileTypeByManufacturer(dev.Manufacturer),
 				URL: fmt.Sprintf("%s/cwmpfiles/%s/%s/latest.alter",
 					app.GApp().GetTr069SettingsStringValue(app.ConfigTR069AccessAddress), session, token),
 				Username:       "",

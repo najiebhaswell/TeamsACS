@@ -15,11 +15,16 @@ func ParseXML(data []byte) (msg Message, err error) {
 	}
 	bodyNode := doc.SelectNode("*", "Body")
 	if bodyNode != nil {
+		// Find the first element child node (skip text/whitespace nodes)
 		var name string
-		if len(bodyNode.Children) > 1 {
-			name = bodyNode.Children[1].Name.Local
-		} else {
-			name = bodyNode.Children[0].Name.Local
+		for _, child := range bodyNode.Children {
+			if child.Type == xmlx.NT_ELEMENT && child.Name.Local != "" {
+				name = child.Name.Local
+				break
+			}
+		}
+		if name == "" {
+			return nil, errors.New("no element found in SOAP Body")
 		}
 		switch name {
 		case "Inform":
@@ -34,6 +39,8 @@ func ParseXML(data []byte) (msg Message, err error) {
 			msg = &GetParameterNamesResponse{}
 		case "DownloadResponse":
 			msg = &DownloadResponse{}
+		case "UploadResponse":
+			msg = &UploadResponse{}
 		case "TransferComplete":
 			msg = &TransferComplete{}
 		case "GetRPCMethodsResponse":
@@ -47,7 +54,7 @@ func ParseXML(data []byte) (msg Message, err error) {
 		case "ScheduleInformResponse":
 			msg = &ScheduleInformResponse{}
 		default:
-			return nil, errors.New("no msg type match")
+			return nil, errors.New("no msg type match: " + name)
 		}
 		if msg != nil {
 			msg.Parse(doc)

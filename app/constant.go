@@ -12,6 +12,15 @@ const (
 	ConfigCpeAutoRegister              = "CpeAutoRegister"
 )
 
+// Device type constants
+const (
+	DeviceTypeRouter  = "router"
+	DeviceTypeONT     = "ont"
+	DeviceTypeGateway = "gateway"
+)
+
+var DeviceTypes = []string{DeviceTypeRouter, DeviceTypeONT, DeviceTypeGateway}
+
 var ConfigConstants = []string{
 	ConfigSystemTitle,
 	ConfigSystemTheme,

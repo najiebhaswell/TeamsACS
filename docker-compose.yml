@@ -34,6 +34,7 @@ services:
       - TEAMSACS_DB_USER=teamsacs
       - TEAMSACS_DB_PWD=teamsacs
       - TEAMSACS_WEB_DEBUG=1
+      - TEAMSACS_TR069_WEB_TLS=false
     networks:
       teamsacs_network:
 

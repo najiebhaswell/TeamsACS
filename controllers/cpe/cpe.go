@@ -61,10 +61,12 @@ func InitRouter() {
 	webserver.GET("/admin/cpe/query", func(c echo.Context) error {
 		var count, start int
 		var nodeId string
+		var deviceType string
 		web.NewParamReader(c).
 			ReadInt(&start, "start", 0).
 			ReadInt(&count, "count", 40).
-			ReadString(&nodeId, "node_id")
+			ReadString(&nodeId, "node_id").
+			ReadString(&deviceType, "device_type")
 		var data []models.NetCpe
 		getQuery := func() *gorm.DB {
 			query := app.GDB().Model(&models.NetCpe{})
@@ -79,6 +81,10 @@ func InitRouter() {
 
 			if nodeId != "" {
 				query = query.Where("node_id = ? ", nodeId)
+			}
+
+			if deviceType != "" {
+				query = query.Where("device_type = ?", deviceType)
 			}
 
 			for name, value := range web.ParseEqualMap(c) {
@@ -97,8 +103,8 @@ func InitRouter() {
 				query = query.Where("name like ?", "%"+keyword+"%").
 					Or("remark like ?", "%"+keyword+"%").
 					Or("sn like ?", "%"+keyword+"%").
-					Or("rd_ipaddr like ?", "%"+keyword+"%").
-					Or("model like ?", "%"+keyword+"%")
+					Or("model like ?", "%"+keyword+"%").
+					Or("device_type like ?", "%"+keyword+"%")
 			}
 			return query
 		}

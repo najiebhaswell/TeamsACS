@@ -33,6 +33,11 @@ func InitRouter() {
 				name = dev.Model
 			case "version":
 				name = dev.SoftwareVersion
+			case "device_type":
+				name = dev.DeviceType
+				if name == "" {
+					name = "router"
+				}
 			default:
 				continue
 			}
@@ -88,7 +93,69 @@ func InitRouter() {
 			Count(&deviceOffline)
 		data = append(data, counterItem{Icon: "mdi mdi-switch", Name: "Offline CPE", Value: float64(deviceOffline)})
 
+		var ontCount int64
+		app.GDB().Model(&models.NetCpe{}).Where("device_type = ?", "ont").Count(&ontCount)
+		data = append(data, counterItem{Icon: "mdi mdi-router-wireless", Name: "ONT Devices", Value: float64(ontCount)})
+
+		var routerCount int64
+		app.GDB().Model(&models.NetCpe{}).Where("device_type = ? OR device_type = '' OR device_type IS NULL", "router").Count(&routerCount)
+		data = append(data, counterItem{Icon: "mdi mdi-switch", Name: "Router Devices", Value: float64(routerCount)})
+
 		return c.JSON(http.StatusOK, data)
+	})
+
+	webserver.GET("/admin/overview/distribution", func(c echo.Context) error {
+		type distItem struct {
+			Name  string `json:"name"`
+			Count int64  `json:"count"`
+		}
+		type distResult struct {
+			Manufacturer []distItem `json:"manufacturer"`
+			Model        []distItem `json:"model"`
+			Version      []distItem `json:"version"`
+		}
+		var result distResult
+
+		// Manufacturer distribution
+		var mfRows []struct {
+			Manufacturer string
+			Cnt          int64
+		}
+		app.GDB().Model(&models.NetCpe{}).
+			Select("manufacturer, count(*) as cnt").
+			Where("manufacturer IS NOT NULL AND manufacturer != ''").
+			Group("manufacturer").Order("cnt desc").Limit(20).Find(&mfRows)
+		for _, r := range mfRows {
+			result.Manufacturer = append(result.Manufacturer, distItem{Name: r.Manufacturer, Count: r.Cnt})
+		}
+
+		// Model distribution
+		var mdRows []struct {
+			Model string
+			Cnt   int64
+		}
+		app.GDB().Model(&models.NetCpe{}).
+			Select("model, count(*) as cnt").
+			Where("model IS NOT NULL AND model != ''").
+			Group("model").Order("cnt desc").Limit(20).Find(&mdRows)
+		for _, r := range mdRows {
+			result.Model = append(result.Model, distItem{Name: r.Model, Count: r.Cnt})
+		}
+
+		// Version distribution
+		var verRows []struct {
+			SoftwareVersion string
+			Cnt             int64
+		}
+		app.GDB().Model(&models.NetCpe{}).
+			Select("software_version, count(*) as cnt").
+			Where("software_version IS NOT NULL AND software_version != ''").
+			Group("software_version").Order("cnt desc").Limit(20).Find(&verRows)
+		for _, r := range verRows {
+			result.Version = append(result.Version, distItem{Name: r.SoftwareVersion, Count: r.Cnt})
+		}
+
+		return c.JSON(http.StatusOK, result)
 	})
 
 	webserver.GET("/admin/metrics/tr069/line", func(c echo.Context) error {

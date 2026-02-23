@@ -135,9 +135,12 @@ func (s *Tr069Server) Tr069Index(c echo.Context) error {
 	var lastInform *cwmp.Inform
 
 	if bodyLen > 0 {
+		log.Info2(fmt.Sprintf("recv CPE raw XML body: %s", string(requestBody)),
+			zap.String("namespace", "tr069"))
 		msg, err = cwmp.ParseXML(requestBody)
 		if err != nil {
-			log.Error2("cwmp read xml error", zap.String("namespace", "tr069"), zap.Error(err))
+			log.Error2("cwmp read xml error", zap.String("namespace", "tr069"), zap.Error(err),
+				zap.String("body", string(requestBody)))
 			return c.String(http.StatusBadRequest, fmt.Sprintf("cwmp read xml error %s", err.Error()))
 		}
 
@@ -189,6 +192,29 @@ func (s *Tr069Server) Tr069Index(c echo.Context) error {
 				events.PubEventCwmpSuperviseStatus(lastestSn, msg.GetID(), "info",
 					fmt.Sprintf("Recv Cwmp %s Message %s", msg.GetName(), common.ToJson(msg)))
 			}
+			// Check DB preset tasks for pending commands after processing response
+			if lastestSn != "" {
+				log.Infof("GetParameterValuesResponse: checking preset tasks for sn=%s", lastestSn)
+				cpe := app.GApp().CwmpTable().GetCwmpCpe(lastestSn)
+				ptask, pterr := cpe.GetLatestCwmpPresetTask()
+				log.Infof("GetParameterValuesResponse: preset task result: err=%v, task=%v", pterr, ptask != nil)
+				if pterr == nil && ptask != nil && len(ptask.Request) > 0 {
+					log.Infof("GetParameterValuesResponse: sending preset task %s", ptask.Name)
+					return xmlCwmpMessage(c, []byte(ptask.Request))
+				}
+				// Also check memory queue
+				qmsg, qerr := cpe.RecvCwmpEventData(500, true)
+				if qerr != nil {
+					qmsg, _ = cpe.RecvCwmpEventData(500, false)
+				}
+				if qmsg != nil {
+					if qmsg.Session != "" {
+						events.PubEventCwmpSuperviseStatus(lastestSn, qmsg.Session, "info",
+							fmt.Sprintf("Send Cwmp %s Message %s", qmsg.Message.GetName(), common.ToJson(qmsg.Message)))
+					}
+					return xmlCwmpMessage(c, qmsg.Message.CreateXML())
+				}
+			}
 		case "SetParameterValuesResponse":
 			lastestSn := s.GetLatestCookieSn(c)
 			if lastestSn != "" {
@@ -198,6 +224,13 @@ func (s *Tr069Server) Tr069Index(c echo.Context) error {
 				if err != nil {
 					log.Error2("UpdateCwmpPresetTaskStatus error",
 						zap.String("namespace", "tr069"), zap.Error(err))
+				}
+				// Check for more pending preset tasks (e.g., Enable after SSID change)
+				cpe := app.GApp().CwmpTable().GetCwmpCpe(lastestSn)
+				ptask, pterr := cpe.GetLatestCwmpPresetTask()
+				if pterr == nil && ptask != nil && len(ptask.Request) > 0 {
+					log.Infof("SetParameterValuesResponse: sending next preset task %s", ptask.Name)
+					return xmlCwmpMessage(c, []byte(ptask.Request))
 				}
 			}
 		case "GetParameterNamesResponse":
@@ -228,6 +261,7 @@ func (s *Tr069Server) Tr069Index(c echo.Context) error {
 	} else {
 		// 当 CPE 发送空消息时检测 CPE任务队列
 		lastestSn := s.GetLatestCookieSn(c)
+		log.Infof("Empty POST handler: sn=%s", lastestSn)
 		if lastestSn == "" {
 			return noContentResp(c)
 		}
@@ -236,7 +270,9 @@ func (s *Tr069Server) Tr069Index(c echo.Context) error {
 
 		// 首先处理预设任务
 		ptask, err := cpe.GetLatestCwmpPresetTask()
+		log.Infof("Empty POST: preset task check: err=%v, hasTask=%v", err, ptask != nil)
 		if err == nil && ptask != nil && len(ptask.Request) > 0 {
+			log.Infof("Empty POST: sending preset task %s", ptask.Name)
 			return xmlCwmpMessage(c, []byte(ptask.Request))
 		}
 
@@ -365,6 +401,46 @@ func (s *Tr069Server) processInformEvent(c echo.Context, lastInform *cwmp.Inform
 			zap.String("sn", lastInform.Sn),
 		)
 	}
+
+	// Auto-fetch WiFi SSIDs and WAN info after every Inform (not included in Inform params)
+	// Detect data model from Inform params to avoid requesting non-existent paths
+	go func() {
+		var paramNames []string
+		// Check if device uses TR-098 (InternetGatewayDevice) or TR-181 (Device) data model
+		for paramName := range lastInform.Params {
+			if strings.HasPrefix(paramName, "InternetGatewayDevice.") {
+				paramNames = []string{
+					"InternetGatewayDevice.DeviceInfo.",
+					"InternetGatewayDevice.LANDevice.1.WLANConfiguration.",
+					"InternetGatewayDevice.LANDevice.1.Hosts.",
+					"InternetGatewayDevice.WANDevice.",
+				}
+				break
+			}
+			if strings.HasPrefix(paramName, "Device.") {
+				paramNames = []string{
+					"Device.WiFi.",
+					"Device.IP.",
+					"Device.PPP.",
+				}
+				break
+			}
+		}
+		if len(paramNames) == 0 {
+			return
+		}
+		session := "auto-fetch-" + common.UUID()
+		_ = cpe.SendCwmpEventData(models.CwmpEventData{
+			Session: session,
+			Sn:      lastInform.Sn,
+			Message: &cwmp.GetParameterValues{
+				ID:             session,
+				Name:           "AutoFetchParams",
+				NoMore:         0,
+				ParameterNames: paramNames,
+			},
+		}, 3000, false)
+	}()
 }
 
 func xmlCwmpMessage(c echo.Context, response []byte) error {

@@ -25,6 +25,12 @@ func (p *myjar) Cookies(u *url.URL) []*http.Cookie {
 }
 
 func ConnectionRequestAuth(username string, password string, uri string) (bool, error) {
+	parsedUrl, parseErr := url.Parse(uri)
+	if parseErr != nil {
+		return false, parseErr
+	}
+	uriPath := parsedUrl.RequestURI()
+
 	client := &http.Client{}
 	jar := &myjar{}
 	jar.jar = make(map[string][]*http.Cookie)
@@ -33,6 +39,9 @@ func ConnectionRequestAuth(username string, password string, uri string) (bool, 
 	var resp *http.Response
 	var err error
 	req, err = http.NewRequest("GET", uri, nil)
+	if err != nil {
+		return false, err
+	}
 	resp, err = client.Do(req)
 	if err != nil {
 		return false, err
@@ -52,7 +61,7 @@ func ConnectionRequestAuth(username string, password string, uri string) (bool, 
 
 		// A2
 		h = md5.New()
-		A2 := fmt.Sprintf("GET:%s", "/auth")
+		A2 := fmt.Sprintf("GET:%s", uriPath)
 		io.WriteString(h, A2)
 		HA2 := fmt.Sprintf("%x", h.Sum(nil))
 
@@ -62,7 +71,7 @@ func ConnectionRequestAuth(username string, password string, uri string) (bool, 
 
 		// now make header
 		AuthHeader := fmt.Sprintf(`Digest username="%s", realm="%s", nonce="%s", uri="%s", cnonce="%s", nc=00000001, qop=%s, response="%s", opaque="%s", algorithm=MD5`,
-			username, realmHeader, nonceHeader, "/auth", cnonce, qopHeader, response, opaqueHeader)
+			username, realmHeader, nonceHeader, uriPath, cnonce, qopHeader, response, opaqueHeader)
 		req.Header.Set("Authorization", AuthHeader)
 		resp, err = client.Do(req)
 	} else {
@@ -72,9 +81,9 @@ func ConnectionRequestAuth(username string, password string, uri string) (bool, 
 }
 
 /*
- Parse Authorization header from the http.Request. Returns a map of
- auth parameters or nil if the header is not a valid parsable Digest
- auth header.
+Parse Authorization header from the http.Request. Returns a map of
+auth parameters or nil if the header is not a valid parsable Digest
+auth header.
 */
 func DigestAuthParams(r *http.Response) map[string]string {
 	s := strings.SplitN(r.Header.Get("Www-Authenticate"), " ", 2)
@@ -105,7 +114,7 @@ func RandomKey() string {
 }
 
 /*
- H function for MD5 algorithm (returns a lower-case hex MD5 digest)
+H function for MD5 algorithm (returns a lower-case hex MD5 digest)
 */
 func H(data string) string {
 	digest := md5.New()

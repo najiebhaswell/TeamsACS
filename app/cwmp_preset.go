@@ -206,7 +206,7 @@ func (c *CwmpCpe) creatFactoryResetConfigDownloadTask(presetId int64, freset *mo
 		ID:         session,
 		NoMore:     0,
 		CommandKey: session,
-		FileType:   "X MIKROTIK Factory Configuration File",
+		FileType:   c.getFactoryConfigFileType(),
 		URL: fmt.Sprintf("%s/cwmpfiles/preset/%s/%s/latest.alter",
 			app.GetTr069SettingsStringValue(ConfigTR069AccessAddress), session, token),
 		Username:       "",

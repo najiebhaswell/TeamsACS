@@ -23,7 +23,7 @@ import (
 	"github.com/gocarina/gocsv"
 	_ "github.com/gocarina/gocsv"
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/labstack/echo-jwt/v4"
+	echojwt "github.com/labstack/echo-jwt/v4"
 	"github.com/spf13/cast"
 
 	"github.com/gorilla/sessions"
@@ -47,6 +47,7 @@ var sessionSkips = []string{
 	"/logout",
 	"/admin/login",
 	"/static",
+	"/reactui",
 }
 
 var jwtSkips = []string{
@@ -103,6 +104,39 @@ func NewAdminServer() *AdminServer {
 
 	// 静态目录映射
 	s.root.GET("/static/*", echo.WrapHandler(http.FileServer(http.FS(assets.StaticFs))))
+
+	// React UI SPA serving
+	s.root.GET("/reactui/*", func(c echo.Context) error {
+		p := c.Param("*")
+		// Try to serve static file first
+		if p != "" && p != "/" {
+			data, err := assets.StaticFs.ReadFile("static/reactui/" + p)
+			if err == nil {
+				ctype := "application/octet-stream"
+				if strings.HasSuffix(p, ".js") {
+					ctype = "application/javascript"
+				} else if strings.HasSuffix(p, ".css") {
+					ctype = "text/css"
+				} else if strings.HasSuffix(p, ".html") {
+					ctype = "text/html"
+				} else if strings.HasSuffix(p, ".svg") {
+					ctype = "image/svg+xml"
+				} else if strings.HasSuffix(p, ".png") {
+					ctype = "image/png"
+				} else if strings.HasSuffix(p, ".ico") {
+					ctype = "image/x-icon"
+				}
+				return c.Blob(200, ctype, data)
+			}
+		}
+		// Fallback to index.html for SPA routing
+		data, err := assets.StaticFs.ReadFile("static/reactui/index.html")
+		if err != nil {
+			return c.String(404, "React UI not found")
+		}
+		return c.HTMLBlob(200, data)
+	})
+
 	// 模板加载
 	s.root.Renderer = tpl.NewCommonTemplate(assets.TemplatesFs, []string{"templates"}, app.GApp().GetTemplateFuncMap())
 
