@@ -288,7 +288,7 @@ func sessionCheck() echo.MiddlewareFunc {
 			sess, _ := session.Get(UserSession, c)
 			username := sess.Values[UserSessionName]
 			if username == nil || username == "" {
-				return c.Redirect(http.StatusTemporaryRedirect, "/login?errmsg=User not logged in or login expired")
+				return c.Redirect(http.StatusTemporaryRedirect, "/reactui/login")
 			}
 			return next(c)
 		}

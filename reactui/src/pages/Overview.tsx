@@ -2,35 +2,13 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
-    MonitorSmartphone,
-    Wifi,
-    WifiOff,
-    Server,
-    Activity,
-    Radio,
-    MessageSquare,
-    Download,
-    Factory,
-    Cpu,
-    Code,
+    MonitorSmartphone, Wifi, WifiOff, Server, Activity,
+    Radio, MessageSquare, Download, Factory, Cpu, Code,
 } from 'lucide-react'
 
-interface CounterItem {
-    name: string
-    value: number
-    icon: string
-}
-
-interface DistItem {
-    name: string
-    count: number
-}
-
-interface DistResult {
-    manufacturer: DistItem[]
-    model: DistItem[]
-    version: DistItem[]
-}
+interface CounterItem { name: string; value: number; icon: string }
+interface DistItem { name: string; count: number }
+interface DistResult { manufacturer: DistItem[]; model: DistItem[]; version: DistItem[] }
 
 const iconMap: Record<string, { icon: typeof Activity; color: string; shadow: string }> = {
     'CPE Total': { icon: MonitorSmartphone, color: 'from-blue-500 to-blue-600', shadow: 'shadow-blue-500/20' },
@@ -48,40 +26,67 @@ const displayOrder = [
     '24h Total Message', '24h TR069 Inform', '24h TR069 Download',
 ]
 
-function DistributionCard({ title, icon: Icon, items, color }: { title: string; icon: typeof Factory; items: DistItem[] | undefined; color: string }) {
-    const total = items?.reduce((sum, i) => sum + i.count, 0) || 0
+const PALETTE_BRAND = ['#2563eb', '#7c3aed', '#db2777', '#ea580c', '#0891b2', '#059669']
+const PALETTE_MODEL = ['#059669', '#0284c7', '#7c3aed', '#e11d48', '#ca8a04', '#0891b2']
+const PALETTE_VERSION = ['#ea580c', '#2563eb', '#16a34a', '#9333ea', '#dc2626', '#0891b2']
+
+function PieChart({ items, colors, size = 140 }: { items: DistItem[]; colors: string[]; size?: number }) {
+    const total = items.reduce((s, i) => s + i.count, 0)
+    if (total === 0) return null
+    const cx = size / 2, cy = size / 2, r = size / 2 - 4
+    let cumAngle = -90
 
     return (
-        <Card className="bg-slate-900/50 border-slate-800">
+        <svg width={size} height={size} className="mx-auto">
+            {items.map((item, i) => {
+                const angle = (item.count / total) * 360
+                const startAngle = cumAngle
+                cumAngle += angle
+                const endAngle = cumAngle
+                const largeArc = angle > 180 ? 1 : 0
+                const x1 = cx + r * Math.cos((startAngle * Math.PI) / 180)
+                const y1 = cy + r * Math.sin((startAngle * Math.PI) / 180)
+                const x2 = cx + r * Math.cos((endAngle * Math.PI) / 180)
+                const y2 = cy + r * Math.sin((endAngle * Math.PI) / 180)
+                const d = items.length === 1
+                    ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.01} ${cy - r} Z`
+                    : `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`
+                return <path key={i} d={d} fill={colors[i % colors.length]} className="hover:opacity-80 transition-opacity" />
+            })}
+            <circle cx={cx} cy={cy} r={r * 0.55} fill="var(--app-page)" />
+            <text x={cx} y={cy - 6} textAnchor="middle" className="fill-on-surface text-2xl font-bold">{total}</text>
+            <text x={cx} y={cy + 12} textAnchor="middle" className="fill-on-surface-muted text-[10px]">total</text>
+        </svg>
+    )
+}
+
+function DistributionCard({ title, icon: Icon, items, color, palette }: { title: string; icon: typeof Factory; items: DistItem[] | undefined; color: string; palette: string[] }) {
+    return (
+        <Card className="bg-surface border-surface-border">
             <CardHeader className="pb-3">
-                <CardTitle className="text-base text-white flex items-center gap-2">
+                <CardTitle className="text-base text-on-surface flex items-center gap-2">
                     <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${color} flex items-center justify-center`}>
                         <Icon className="w-4 h-4 text-white" />
                     </div>
                     {title}
                 </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent>
                 {!items || items.length === 0 ? (
-                    <div className="text-sm text-slate-500">No data</div>
+                    <div className="text-sm text-on-surface-muted">No data</div>
                 ) : (
-                    items.map((item) => {
-                        const pct = total > 0 ? (item.count / total) * 100 : 0
-                        return (
-                            <div key={item.name} className="group">
-                                <div className="flex items-center justify-between text-sm mb-1">
-                                    <span className="text-slate-300 font-medium truncate mr-2">{item.name}</span>
-                                    <span className="text-slate-400 shrink-0">{item.count}</span>
+                    <div className="flex flex-col items-center gap-3">
+                        <PieChart items={items} colors={palette} />
+                        <div className="w-full space-y-1.5">
+                            {items.map((item, i) => (
+                                <div key={item.name} className="flex items-center gap-2 text-sm">
+                                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: palette[i % palette.length] }} />
+                                    <span className="text-on-surface-secondary truncate flex-1">{item.name}</span>
+                                    <span className="text-on-surface font-medium">{item.count}</span>
                                 </div>
-                                <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                                    <div
-                                        className={`h-full bg-gradient-to-r ${color} rounded-full transition-all duration-500`}
-                                        style={{ width: `${pct}%` }}
-                                    />
-                                </div>
-                            </div>
-                        )
-                    })
+                            ))}
+                        </div>
+                    </div>
                 )}
             </CardContent>
         </Card>
@@ -114,22 +119,22 @@ export default function OverviewPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-                <p className="text-slate-400 text-sm mt-1">System overview and statistics</p>
+                <h1 className="text-2xl font-bold text-on-surface">Dashboard</h1>
+                <p className="text-on-surface-secondary text-sm mt-1">System overview and statistics</p>
             </div>
 
             {/* Device Stats */}
             <div>
-                <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Devices</h2>
+                <h2 className="text-sm font-medium text-on-surface-secondary uppercase tracking-wider mb-3">Devices</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                     {isLoading ? (
                         Array.from({ length: 5 }).map((_, i) => (
-                            <Card key={i} className="bg-slate-900/50 border-slate-800">
+                            <Card key={i} className="bg-surface border-surface-border">
                                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                    <div className="h-4 w-20 bg-slate-800 rounded animate-pulse" />
-                                    <div className="w-9 h-9 bg-slate-800 rounded-lg animate-pulse" />
+                                    <div className="h-4 w-20 bg-surface-skeleton rounded animate-pulse" />
+                                    <div className="w-9 h-9 bg-surface-skeleton rounded-lg animate-pulse" />
                                 </CardHeader>
-                                <CardContent><div className="h-9 w-16 bg-slate-800 rounded animate-pulse" /></CardContent>
+                                <CardContent><div className="h-9 w-16 bg-surface-skeleton rounded animate-pulse" /></CardContent>
                             </Card>
                         ))
                     ) : (
@@ -137,15 +142,15 @@ export default function OverviewPage() {
                             const mapping = iconMap[item.name] || { icon: Activity, color: 'from-slate-500 to-slate-600', shadow: 'shadow-slate-500/20' }
                             const Icon = mapping.icon
                             return (
-                                <Card key={item.name} className="bg-slate-900/50 border-slate-800 hover:border-slate-700 transition-colors">
+                                <Card key={item.name} className="bg-surface border-surface-border hover:border-on-surface-muted/30 transition-colors">
                                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                        <CardTitle className="text-sm font-medium text-slate-400">{item.name}</CardTitle>
+                                        <CardTitle className="text-sm font-medium text-on-surface-secondary">{item.name}</CardTitle>
                                         <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${mapping.color} flex items-center justify-center shadow-lg ${mapping.shadow}`}>
                                             <Icon className="w-4 h-4 text-white" />
                                         </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="text-3xl font-bold text-white">{Math.round(item.value).toLocaleString()}</div>
+                                        <div className="text-3xl font-bold text-on-surface">{Math.round(item.value).toLocaleString()}</div>
                                     </CardContent>
                                 </Card>
                             )
@@ -156,16 +161,16 @@ export default function OverviewPage() {
 
             {/* TR-069 Activity */}
             <div>
-                <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">TR-069 Activity (24h)</h2>
+                <h2 className="text-sm font-medium text-on-surface-secondary uppercase tracking-wider mb-3">TR-069 Activity (24h)</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     {isLoading ? (
                         Array.from({ length: 3 }).map((_, i) => (
-                            <Card key={i} className="bg-slate-900/50 border-slate-800">
+                            <Card key={i} className="bg-surface border-surface-border">
                                 <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                    <div className="h-4 w-24 bg-slate-800 rounded animate-pulse" />
-                                    <div className="w-9 h-9 bg-slate-800 rounded-lg animate-pulse" />
+                                    <div className="h-4 w-24 bg-surface-skeleton rounded animate-pulse" />
+                                    <div className="w-9 h-9 bg-surface-skeleton rounded-lg animate-pulse" />
                                 </CardHeader>
-                                <CardContent><div className="h-9 w-16 bg-slate-800 rounded animate-pulse" /></CardContent>
+                                <CardContent><div className="h-9 w-16 bg-surface-skeleton rounded animate-pulse" /></CardContent>
                             </Card>
                         ))
                     ) : (
@@ -174,15 +179,15 @@ export default function OverviewPage() {
                             const Icon = mapping.icon
                             const label = item.name.replace('24h ', '')
                             return (
-                                <Card key={item.name} className="bg-slate-900/50 border-slate-800 hover:border-slate-700 transition-colors">
+                                <Card key={item.name} className="bg-surface border-surface-border hover:border-on-surface-muted/30 transition-colors">
                                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                                        <CardTitle className="text-sm font-medium text-slate-400">{label}</CardTitle>
+                                        <CardTitle className="text-sm font-medium text-on-surface-secondary">{label}</CardTitle>
                                         <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${mapping.color} flex items-center justify-center shadow-lg ${mapping.shadow}`}>
                                             <Icon className="w-4 h-4 text-white" />
                                         </div>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="text-3xl font-bold text-white">{Math.round(item.value).toLocaleString()}</div>
+                                        <div className="text-3xl font-bold text-on-surface">{Math.round(item.value).toLocaleString()}</div>
                                     </CardContent>
                                 </Card>
                             )
@@ -193,26 +198,11 @@ export default function OverviewPage() {
 
             {/* Distribution */}
             <div>
-                <h2 className="text-sm font-medium text-slate-400 uppercase tracking-wider mb-3">Device Distribution</h2>
+                <h2 className="text-sm font-medium text-on-surface-secondary uppercase tracking-wider mb-3">Device Distribution</h2>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                    <DistributionCard
-                        title="Brand"
-                        icon={Factory}
-                        items={dist?.manufacturer}
-                        color="from-blue-500 to-indigo-600"
-                    />
-                    <DistributionCard
-                        title="Model"
-                        icon={Cpu}
-                        items={dist?.model}
-                        color="from-emerald-500 to-teal-600"
-                    />
-                    <DistributionCard
-                        title="Firmware Version"
-                        icon={Code}
-                        items={dist?.version}
-                        color="from-amber-500 to-orange-600"
-                    />
+                    <DistributionCard title="Brand" icon={Factory} items={dist?.manufacturer} color="from-blue-500 to-indigo-600" palette={PALETTE_BRAND} />
+                    <DistributionCard title="Model" icon={Cpu} items={dist?.model} color="from-emerald-500 to-teal-600" palette={PALETTE_MODEL} />
+                    <DistributionCard title="Firmware Version" icon={Code} items={dist?.version} color="from-amber-500 to-orange-600" palette={PALETTE_VERSION} />
                 </div>
             </div>
         </div>

@@ -71,6 +71,36 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.269 0 0);
   --sidebar-ring: oklch(0.556 0.215 261.73);
+
+  /* App theme */
+  --app-page: #020617;
+  --app-card: rgba(15, 23, 42, 0.5);
+  --app-sidebar: rgba(15, 23, 42, 0.95);
+  --app-header: rgba(15, 23, 42, 0.5);
+  --app-border: #1e293b;
+  --app-text: #ffffff;
+  --app-text-secondary: #94a3b8;
+  --app-text-muted: #64748b;
+  --app-input-bg: rgba(30, 41, 59, 0.5);
+  --app-hover: rgba(30, 41, 59, 0.5);
+  --app-skeleton: #1e293b;
+  --app-ring-track: rgb(30, 41, 59);
+}
+
+.light {
+  /* App theme */
+  --app-page: #f8fafc;
+  --app-card: #ffffff;
+  --app-sidebar: #ffffff;
+  --app-header: rgba(255, 255, 255, 0.8);
+  --app-border: #e2e8f0;
+  --app-text: #0f172a;
+  --app-text-secondary: #64748b;
+  --app-text-muted: #94a3b8;
+  --app-input-bg: #f1f5f9;
+  --app-hover: #f1f5f9;
+  --app-skeleton: #e2e8f0;
+  --app-ring-track: #e2e8f0;
 }
 
 @theme inline {
@@ -106,6 +136,18 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* Semantic app colors */
+  --color-page: var(--app-page);
+  --color-surface: var(--app-card);
+  --color-surface-alt: var(--app-sidebar);
+  --color-surface-header: var(--app-header);
+  --color-surface-border: var(--app-border);
+  --color-surface-hover: var(--app-hover);
+  --color-surface-input: var(--app-input-bg);
+  --color-surface-skeleton: var(--app-skeleton);
+  --color-on-surface: var(--app-text);
+  --color-on-surface-secondary: var(--app-text-secondary);
+  --color-on-surface-muted: var(--app-text-muted);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -116,6 +158,7 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;

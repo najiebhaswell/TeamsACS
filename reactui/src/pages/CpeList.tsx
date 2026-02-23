@@ -108,17 +108,17 @@ export default function CpeListPage() {
         <div className="space-y-4">
             {/* Toast */}
             {toast && (
-                <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-all ${toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+                <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-all ${toast.type === 'success' ? 'bg-emerald-600 text-on-surface' : 'bg-red-600 text-on-surface'
                     }`}>
                     {toast.msg}
                 </div>
             )}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">CPE Devices</h1>
-                    <p className="text-slate-400 text-sm mt-1">{total} devices registered</p>
+                    <h1 className="text-2xl font-bold text-on-surface">CPE Devices</h1>
+                    <p className="text-on-surface-secondary text-sm mt-1">{total} devices registered</p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => refetch()} className="border-slate-700 text-slate-300 hover:bg-slate-800">
+                <Button variant="outline" size="sm" onClick={() => refetch()} className="border-surface-border text-on-surface-secondary hover:bg-surface-hover">
                     <RefreshCw className="w-4 h-4 mr-1" /> Refresh
                 </Button>
             </div>
@@ -126,48 +126,48 @@ export default function CpeListPage() {
             {/* Search */}
             <div className="flex gap-2">
                 <div className="relative flex-1 max-w-md">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-on-surface-muted" />
                     <Input
                         placeholder="Search by SN, name, model..."
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                        className="pl-9 bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500"
+                        className="pl-9 bg-surface border-surface-border text-on-surface placeholder:text-on-surface-muted"
                     />
                 </div>
                 <Button onClick={handleSearch} className="bg-blue-600 hover:bg-blue-500">Search</Button>
             </div>
 
             {/* Table */}
-            <Card className="bg-slate-900/50 border-slate-800 overflow-hidden">
+            <Card className="bg-surface border-surface-border overflow-hidden">
                 <CardContent className="p-0">
                     <Table>
                         <TableHeader>
-                            <TableRow className="border-slate-800 hover:bg-transparent">
-                                <TableHead className="text-slate-400">Status</TableHead>
-                                <TableHead className="text-slate-400">SN</TableHead>
-                                <TableHead className="text-slate-400">Brand</TableHead>
-                                <TableHead className="text-slate-400">Model</TableHead>
-                                <TableHead className="text-slate-400">Type</TableHead>
-                                <TableHead className="text-slate-400">Version</TableHead>
-                                <TableHead className="text-slate-400">RX Power</TableHead>
-                                <TableHead className="text-slate-400">Uptime</TableHead>
-                                <TableHead className="text-slate-400">Last Inform</TableHead>
-                                <TableHead className="text-slate-400 text-right">Action</TableHead>
+                            <TableRow className="border-surface-border hover:bg-transparent">
+                                <TableHead className="text-on-surface-secondary">Status</TableHead>
+                                <TableHead className="text-on-surface-secondary">SN</TableHead>
+                                <TableHead className="text-on-surface-secondary">Brand</TableHead>
+                                <TableHead className="text-on-surface-secondary">Model</TableHead>
+                                <TableHead className="text-on-surface-secondary">Type</TableHead>
+                                <TableHead className="text-on-surface-secondary">Version</TableHead>
+                                <TableHead className="text-on-surface-secondary">RX Power</TableHead>
+                                <TableHead className="text-on-surface-secondary">Uptime</TableHead>
+                                <TableHead className="text-on-surface-secondary">Last Inform</TableHead>
+                                <TableHead className="text-on-surface-secondary text-right">Action</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {isLoading ? (
                                 Array.from({ length: 8 }).map((_, i) => (
-                                    <TableRow key={i} className="border-slate-800">
+                                    <TableRow key={i} className="border-surface-border">
                                         {Array.from({ length: 10 }).map((_, j) => (
-                                            <TableCell key={j}><div className="h-4 bg-slate-800 rounded animate-pulse w-20" /></TableCell>
+                                            <TableCell key={j}><div className="h-4 bg-surface-skeleton rounded animate-pulse w-20" /></TableCell>
                                         ))}
                                     </TableRow>
                                 ))
                             ) : devices.length === 0 ? (
-                                <TableRow className="border-slate-800">
-                                    <TableCell colSpan={10} className="text-center text-slate-500 py-12">
+                                <TableRow className="border-surface-border">
+                                    <TableCell colSpan={10} className="text-center text-on-surface-muted py-12">
                                         No devices found
                                     </TableCell>
                                 </TableRow>
@@ -175,7 +175,7 @@ export default function CpeListPage() {
                                 devices.map((dev) => (
                                     <TableRow
                                         key={dev.id}
-                                        className="border-slate-800 cursor-pointer hover:bg-slate-800/50"
+                                        className="border-surface-border cursor-pointer hover:bg-surface-input"
                                         onClick={() => navigate(`/cpe/${dev.id}`)}
                                     >
                                         <TableCell>
@@ -183,9 +183,9 @@ export default function CpeListPage() {
                                                 {dev.cwmp_status === 'online' ? '● Online' : '○ Offline'}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="font-mono text-sm text-white">{dev.sn}</TableCell>
-                                        <TableCell className="text-slate-300">{dev.manufacturer || '—'}</TableCell>
-                                        <TableCell className="text-slate-300">{dev.model || '—'}</TableCell>
+                                        <TableCell className="font-mono text-sm text-on-surface">{dev.sn}</TableCell>
+                                        <TableCell className="text-on-surface-secondary">{dev.manufacturer || '—'}</TableCell>
+                                        <TableCell className="text-on-surface-secondary">{dev.model || '—'}</TableCell>
                                         <TableCell>
                                             {dev.device_type === 'ont' ? (
                                                 <span className="inline-flex items-center gap-1 text-cyan-400 text-xs">
@@ -197,14 +197,14 @@ export default function CpeListPage() {
                                                 </span>
                                             )}
                                         </TableCell>
-                                        <TableCell className="text-slate-400 text-xs">{dev.software_version || '—'}</TableCell>
-                                        <TableCell className="text-slate-300 font-mono text-xs">
+                                        <TableCell className="text-on-surface-secondary text-xs">{dev.software_version || '—'}</TableCell>
+                                        <TableCell className="text-on-surface-secondary font-mono text-xs">
                                             {dev.fiber_rx_power
                                                 ? (dev.fiber_rx_power.toLowerCase().includes('dbm') ? dev.fiber_rx_power.trim() : `${dev.fiber_rx_power} dBm`)
                                                 : '—'}
                                         </TableCell>
-                                        <TableCell className="text-slate-400 text-xs">{formatUptime(dev.uptime)}</TableCell>
-                                        <TableCell className="text-slate-400 text-xs">{timeAgo(dev.cwmp_last_inform)}</TableCell>
+                                        <TableCell className="text-on-surface-secondary text-xs">{formatUptime(dev.uptime)}</TableCell>
+                                        <TableCell className="text-on-surface-secondary text-xs">{timeAgo(dev.cwmp_last_inform)}</TableCell>
                                         <TableCell className="text-right">
                                             <Button
                                                 variant="destructive"
@@ -228,7 +228,7 @@ export default function CpeListPage() {
             {/* Pagination */}
             {totalPages > 1 && (
                 <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-400">
+                    <span className="text-on-surface-secondary">
                         Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
                     </span>
                     <div className="flex gap-1">
@@ -237,7 +237,7 @@ export default function CpeListPage() {
                             size="sm"
                             onClick={() => setPage(p => Math.max(0, p - 1))}
                             disabled={page === 0}
-                            className="border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-30"
+                            className="border-surface-border text-on-surface-secondary hover:bg-surface-hover disabled:opacity-30"
                         >
                             <ChevronLeft className="w-4 h-4" />
                         </Button>
@@ -252,7 +252,7 @@ export default function CpeListPage() {
                                     onClick={() => setPage(pageNum)}
                                     className={pageNum === page
                                         ? 'bg-blue-600 hover:bg-blue-500'
-                                        : 'border-slate-700 text-slate-300 hover:bg-slate-800'
+                                        : 'border-surface-border text-on-surface-secondary hover:bg-surface-hover'
                                     }
                                 >
                                     {pageNum + 1}
@@ -264,7 +264,7 @@ export default function CpeListPage() {
                             size="sm"
                             onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
                             disabled={page >= totalPages - 1}
-                            className="border-slate-700 text-slate-300 hover:bg-slate-800 disabled:opacity-30"
+                            className="border-surface-border text-on-surface-secondary hover:bg-surface-hover disabled:opacity-30"
                         >
                             <ChevronRight className="w-4 h-4" />
                         </Button>

@@ -62,7 +62,7 @@ function UsageRing({ percent, color, size = 120 }: { percent: number; color: str
                 />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-2xl font-bold text-white">{percent}%</span>
+                <span className="text-2xl font-bold text-on-surface">{percent}%</span>
             </div>
         </div>
     )
@@ -70,9 +70,9 @@ function UsageRing({ percent, color, size = 120 }: { percent: number; color: str
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
     return (
-        <div className="flex justify-between items-center py-2 border-b border-slate-800 last:border-0">
-            <span className="text-slate-400 text-sm">{label}</span>
-            <span className="text-white text-sm font-mono">{value || '—'}</span>
+        <div className="flex justify-between items-center py-2 border-b border-surface-border last:border-0">
+            <span className="text-on-surface-secondary text-sm">{label}</span>
+            <span className="text-on-surface text-sm font-mono">{value || '—'}</span>
         </div>
     )
 }
@@ -88,14 +88,14 @@ export default function SystemStatusPage() {
         return (
             <div className="space-y-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">System Status</h1>
-                    <p className="text-slate-400 text-sm mt-1">Loading...</p>
+                    <h1 className="text-2xl font-bold text-on-surface">System Status</h1>
+                    <p className="text-on-surface-secondary text-sm mt-1">Loading...</p>
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     {[1, 2, 3].map(i => (
-                        <Card key={i} className="bg-slate-900/50 border-slate-800">
+                        <Card key={i} className="bg-surface border-surface-border">
                             <CardContent className="p-8 flex justify-center">
-                                <div className="w-28 h-28 bg-slate-800 rounded-full animate-pulse" />
+                                <div className="w-28 h-28 bg-surface-hover rounded-full animate-pulse" />
                             </CardContent>
                         </Card>
                     ))}
@@ -107,17 +107,17 @@ export default function SystemStatusPage() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-2xl font-bold text-white">System Status</h1>
-                <p className="text-slate-400 text-sm mt-1">
+                <h1 className="text-2xl font-bold text-on-surface">System Status</h1>
+                <p className="text-on-surface-secondary text-sm mt-1">
                     {sys.hostname} · {sys.os} · up {formatUptime(sys.uptime)}
                 </p>
             </div>
 
             {/* Usage Rings */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <Card className="bg-slate-900/50 border-slate-800">
+                <Card className="bg-surface border-surface-border">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm text-slate-400 flex items-center gap-2">
+                        <CardTitle className="text-sm text-on-surface-secondary flex items-center gap-2">
                             <Cpu className="w-4 h-4 text-blue-400" /> CPU Usage
                         </CardTitle>
                     </CardHeader>
@@ -126,13 +126,13 @@ export default function SystemStatusPage() {
                             percent={sys.cpu_usage}
                             color={sys.cpu_usage > 80 ? '#ef4444' : sys.cpu_usage > 50 ? '#f59e0b' : '#10b981'}
                         />
-                        <span className="text-xs text-slate-500 mt-2">{sys.cpu_cores} cores</span>
+                        <span className="text-xs text-on-surface-muted mt-2">{sys.cpu_cores} cores</span>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-slate-900/50 border-slate-800">
+                <Card className="bg-surface border-surface-border">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm text-slate-400 flex items-center gap-2">
+                        <CardTitle className="text-sm text-on-surface-secondary flex items-center gap-2">
                             <MemoryStick className="w-4 h-4 text-violet-400" /> Memory Usage
                         </CardTitle>
                     </CardHeader>
@@ -141,15 +141,15 @@ export default function SystemStatusPage() {
                             percent={sys.mem_used_percent}
                             color={sys.mem_used_percent > 80 ? '#ef4444' : sys.mem_used_percent > 50 ? '#f59e0b' : '#8b5cf6'}
                         />
-                        <span className="text-xs text-slate-500 mt-2">
+                        <span className="text-xs text-on-surface-muted mt-2">
                             {formatBytes(sys.mem_used)} / {formatBytes(sys.mem_total)}
                         </span>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-slate-900/50 border-slate-800">
+                <Card className="bg-surface border-surface-border">
                     <CardHeader className="pb-2">
-                        <CardTitle className="text-sm text-slate-400 flex items-center gap-2">
+                        <CardTitle className="text-sm text-on-surface-secondary flex items-center gap-2">
                             <HardDrive className="w-4 h-4 text-amber-400" /> Disk Usage
                         </CardTitle>
                     </CardHeader>
@@ -158,7 +158,7 @@ export default function SystemStatusPage() {
                             percent={sys.disk_percent}
                             color={sys.disk_percent > 80 ? '#ef4444' : sys.disk_percent > 50 ? '#f59e0b' : '#f59e0b'}
                         />
-                        <span className="text-xs text-slate-500 mt-2">
+                        <span className="text-xs text-on-surface-muted mt-2">
                             {formatBytes(sys.disk_used)} / {formatBytes(sys.disk_total)}
                         </span>
                     </CardContent>
@@ -167,9 +167,9 @@ export default function SystemStatusPage() {
 
             {/* Detail Cards */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card className="bg-slate-900/50 border-slate-800">
+                <Card className="bg-surface border-surface-border">
                     <CardHeader className="pb-3">
-                        <CardTitle className="text-base text-white flex items-center gap-2">
+                        <CardTitle className="text-base text-on-surface flex items-center gap-2">
                             <Server className="w-4 h-4 text-blue-400" /> System Information
                         </CardTitle>
                     </CardHeader>
@@ -182,9 +182,9 @@ export default function SystemStatusPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-slate-900/50 border-slate-800">
+                <Card className="bg-surface border-surface-border">
                     <CardHeader className="pb-3">
-                        <CardTitle className="text-base text-white flex items-center gap-2">
+                        <CardTitle className="text-base text-on-surface flex items-center gap-2">
                             <MemoryStick className="w-4 h-4 text-violet-400" /> Memory Details
                         </CardTitle>
                     </CardHeader>
@@ -196,9 +196,9 @@ export default function SystemStatusPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-slate-900/50 border-slate-800">
+                <Card className="bg-surface border-surface-border">
                     <CardHeader className="pb-3">
-                        <CardTitle className="text-base text-white flex items-center gap-2">
+                        <CardTitle className="text-base text-on-surface flex items-center gap-2">
                             <HardDrive className="w-4 h-4 text-amber-400" /> Disk Details
                         </CardTitle>
                     </CardHeader>
@@ -210,9 +210,9 @@ export default function SystemStatusPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="bg-slate-900/50 border-slate-800">
+                <Card className="bg-surface border-surface-border">
                     <CardHeader className="pb-3">
-                        <CardTitle className="text-base text-white flex items-center gap-2">
+                        <CardTitle className="text-base text-on-surface flex items-center gap-2">
                             <Box className="w-4 h-4 text-emerald-400" /> TeamsACS Process
                         </CardTitle>
                     </CardHeader>

@@ -34,9 +34,9 @@ func InitRouter() {
 		sess, _ := session.Get(webserver.UserSession, c)
 		username := sess.Values[webserver.UserSessionName]
 		if username == nil || username == "" {
-			return c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("/login?errmsg=%s", LoginExpired))
+			return c.Redirect(http.StatusTemporaryRedirect, "/reactui/login")
 		}
-		return c.Render(http.StatusOK, "index", map[string]interface{}{})
+		return c.Redirect(http.StatusTemporaryRedirect, "/reactui/overview")
 	})
 
 	type menus struct {
@@ -109,7 +109,7 @@ func InitRouter() {
 		sess, _ := session.Get(webserver.UserSession, c)
 		sess.Values = make(map[interface{}]interface{})
 		_ = sess.Save(c.Request(), c.Response())
-		return c.Redirect(http.StatusMovedPermanently, "/login")
+		return c.Redirect(http.StatusMovedPermanently, "/reactui/login")
 	})
 
 	// 登录提交
@@ -139,7 +139,7 @@ func InitRouter() {
 		if err != nil {
 			return echo.NewHTTPError(http.StatusMovedPermanently, err.Error())
 		}
-		return c.Redirect(http.StatusMovedPermanently, "/")
+		return c.Redirect(http.StatusMovedPermanently, "/reactui/overview")
 	})
 
 	type AuthForm struct {

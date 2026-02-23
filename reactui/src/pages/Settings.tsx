@@ -108,7 +108,7 @@ export default function SettingsPage() {
         <div className="space-y-6">
             {/* Toast */}
             {toast && (
-                <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-sm font-medium shadow-lg flex items-center gap-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+                <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-sm font-medium shadow-lg flex items-center gap-2 ${toast.type === 'success' ? 'bg-emerald-600 text-on-surface' : 'bg-red-600 text-on-surface'
                     }`}>
                     {toast.type === 'success' && <Check className="w-4 h-4" />}
                     {toast.msg}
@@ -117,12 +117,12 @@ export default function SettingsPage() {
 
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Settings</h1>
-                    <p className="text-slate-400 text-sm mt-1">System and TR-069 configuration</p>
+                    <h1 className="text-2xl font-bold text-on-surface">Settings</h1>
+                    <p className="text-on-surface-secondary text-sm mt-1">System and TR-069 configuration</p>
                 </div>
                 <div className="flex gap-2">
                     {dirty && (
-                        <Button variant="outline" size="sm" onClick={handleReset} className="border-slate-700 text-slate-300 hover:bg-slate-800">
+                        <Button variant="outline" size="sm" onClick={handleReset} className="border-surface-border text-on-surface-secondary hover:bg-surface-hover">
                             Reset
                         </Button>
                     )}
@@ -139,7 +139,7 @@ export default function SettingsPage() {
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-1 bg-slate-900/50 p-1 rounded-lg border border-slate-800 w-fit">
+            <div className="flex gap-1 bg-surface p-1 rounded-lg border border-surface-border w-fit">
                 {(configList || []).map((cfg) => {
                     const Icon = tabIcons[cfg.name] || Cog
                     const isActive = activeTab === cfg.name
@@ -148,8 +148,8 @@ export default function SettingsPage() {
                             key={cfg.name}
                             onClick={() => handleTabChange(cfg.name)}
                             className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${isActive
-                                ? 'bg-slate-800 text-white shadow-sm'
-                                : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                                ? 'bg-surface-hover text-on-surface shadow-sm'
+                                : 'text-on-surface-secondary hover:text-on-surface hover:bg-surface-input'
                                 }`}
                         >
                             <Icon className={`w-4 h-4 ${isActive ? tabColors[cfg.name] || 'text-blue-400' : ''}`} />
@@ -160,9 +160,9 @@ export default function SettingsPage() {
             </div>
 
             {/* Config Form */}
-            <Card className="bg-slate-900/50 border-slate-800">
+            <Card className="bg-surface border-surface-border">
                 <CardHeader className="pb-4">
-                    <CardTitle className="text-base text-white flex items-center gap-2">
+                    <CardTitle className="text-base text-on-surface flex items-center gap-2">
                         {(() => { const Icon = tabIcons[activeTab] || Cog; return <Icon className={`w-4 h-4 ${tabColors[activeTab]}`} /> })()}
                         {(configList || []).find(c => c.name === activeTab)?.title || activeTab}
                     </CardTitle>
@@ -171,8 +171,8 @@ export default function SettingsPage() {
                     {isLoading ? (
                         Array.from({ length: 4 }).map((_, i) => (
                             <div key={i} className="space-y-2">
-                                <div className="h-4 w-32 bg-slate-800 rounded animate-pulse" />
-                                <div className="h-10 bg-slate-800 rounded animate-pulse" />
+                                <div className="h-4 w-32 bg-surface-skeleton rounded animate-pulse" />
+                                <div className="h-10 bg-surface-skeleton rounded animate-pulse" />
                             </div>
                         ))
                     ) : (
@@ -181,20 +181,20 @@ export default function SettingsPage() {
                                 const meta = labelMap[key] || { label: key, description: '' }
                                 return (
                                     <div key={key} className="space-y-1.5">
-                                        <Label className="text-sm text-slate-300">{meta.label}</Label>
+                                        <Label className="text-sm text-on-surface-secondary">{meta.label}</Label>
                                         {meta.description && (
-                                            <p className="text-xs text-slate-500">{meta.description}</p>
+                                            <p className="text-xs text-on-surface-muted">{meta.description}</p>
                                         )}
                                         <Input
                                             value={value}
                                             onChange={(e) => handleChange(key, e.target.value)}
-                                            className="bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-500"
+                                            className="bg-surface-input border-surface-border text-on-surface placeholder:text-on-surface-muted"
                                         />
                                     </div>
                                 )
                             })
                         ) : (
-                            <div className="text-sm text-slate-500 py-4">Loading configuration...</div>
+                            <div className="text-sm text-on-surface-muted py-4">Loading configuration...</div>
                         )
                     )}
                 </CardContent>
