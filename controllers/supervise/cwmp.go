@@ -383,8 +383,10 @@ func cwmpWifiSsid(sid string, dev models.NetCpe, session string) {
 }
 
 // cwmpSetWifiParams creates separate CwmpPresetTasks for each param group
+// and sends them directly to CPE via channel for immediate execution
 func cwmpSetWifiParams(dev models.NetCpe, ssidIdx int, ssid, password, channel, enable string) error {
 	prefix := fmt.Sprintf("InternetGatewayDevice.LANDevice.1.WLANConfiguration.%d.", ssidIdx)
+	cpe := app.GApp().CwmpTable().GetCwmpCpe(dev.Sn)
 	taskCount := 0
 
 	// Task 1: SSID + Password
@@ -396,6 +398,18 @@ func cwmpSetWifiParams(dev models.NetCpe, ssidIdx int, ssid, password, channel, 
 		ssidParams[prefix+"KeyPassphrase"] = cwmp.ValueStruct{Type: "xsd:string", Value: password}
 	}
 	if len(ssidParams) > 0 {
+		session := fmt.Sprintf("Wifi-SetWifiSSID-%s", common.UUID())
+		msg := &cwmp.SetParameterValues{ID: session, NoMore: 0, Params: ssidParams}
+		// Send directly to CPE channel for immediate execution
+		err := cpe.SendCwmpEventData(models.CwmpEventData{
+			Session: session,
+			Sn:      dev.Sn,
+			Message: msg,
+		}, 5000, true)
+		if err != nil {
+			log.Errorf("Failed to send WiFi SSID task to channel: %s", err.Error())
+		}
+		// Also persist to DB for tracking
 		if err := createWifiPresetTask(dev.Sn, "SetWifiSSID", "wifi-ssid", ssidParams, taskCount); err != nil {
 			return err
 		}
@@ -411,6 +425,18 @@ func cwmpSetWifiParams(dev models.NetCpe, ssidIdx int, ssid, password, channel, 
 		} else {
 			chParams[prefix+"AutoChannelEnable"] = cwmp.ValueStruct{Type: "xsd:boolean", Value: "false"}
 		}
+		session := fmt.Sprintf("Wifi-SetWifiChannel-%s", common.UUID())
+		msg := &cwmp.SetParameterValues{ID: session, NoMore: 0, Params: chParams}
+		// Send directly to CPE channel for immediate execution
+		err := cpe.SendCwmpEventData(models.CwmpEventData{
+			Session: session,
+			Sn:      dev.Sn,
+			Message: msg,
+		}, 5000, true)
+		if err != nil {
+			log.Errorf("Failed to send WiFi Channel task to channel: %s", err.Error())
+		}
+		// Also persist to DB for tracking
 		if err := createWifiPresetTask(dev.Sn, "SetWifiChannel", "wifi-channel", chParams, taskCount); err != nil {
 			return err
 		}
@@ -424,6 +450,18 @@ func cwmpSetWifiParams(dev models.NetCpe, ssidIdx int, ssid, password, channel, 
 		if enable == "true" {
 			enParams[prefix+"BeaconType"] = cwmp.ValueStruct{Type: "xsd:string", Value: "WPAand11i"}
 		}
+		session := fmt.Sprintf("Wifi-SetWifiEnable-%s", common.UUID())
+		msg := &cwmp.SetParameterValues{ID: session, NoMore: 0, Params: enParams}
+		// Send directly to CPE channel for immediate execution
+		err := cpe.SendCwmpEventData(models.CwmpEventData{
+			Session: session,
+			Sn:      dev.Sn,
+			Message: msg,
+		}, 5000, true)
+		if err != nil {
+			log.Errorf("Failed to send WiFi Enable task to channel: %s", err.Error())
+		}
+		// Also persist to DB for tracking
 		if err := createWifiPresetTask(dev.Sn, "SetWifiEnable", "wifi-enable", enParams, taskCount); err != nil {
 			return err
 		}
@@ -434,9 +472,9 @@ func cwmpSetWifiParams(dev models.NetCpe, ssidIdx int, ssid, password, channel, 
 		return fmt.Errorf("no params to set")
 	}
 
-	log.Infof("cwmpSetWifiParams: created %d tasks for sn=%s idx=%d", taskCount, dev.Sn, ssidIdx)
+	log.Infof("cwmpSetWifiParams: created %d tasks for sn=%s idx=%d, sent directly to CPE channel", taskCount, dev.Sn, ssidIdx)
 
-	// Trigger CPE to connect and pick up the tasks
+	// Trigger CPE to connect and pick up the tasks if not already connected
 	session := "WifiTrigger-" + common.UUID()
 	go connectDeviceAuth(session, dev)
 
@@ -457,6 +495,7 @@ func createWifiPresetTask(sn, name, event string, params map[string]cwmp.ValueSt
 }
 
 // cwmpSetWanParams creates preset tasks to set WAN connection parameters
+// and sends them directly to CPE via channel for immediate execution
 func cwmpSetWanParams(dev models.NetCpe, devIdx, connIdx int, connType, username, password, enable, ipMode, vlanID string) error {
 	// Build TR-069 parameter prefix
 	var connPath string
@@ -467,6 +506,7 @@ func cwmpSetWanParams(dev models.NetCpe, devIdx, connIdx int, connType, username
 	}
 	devPath := fmt.Sprintf("InternetGatewayDevice.WANDevice.1.WANConnectionDevice.%d.", devIdx)
 
+	cpe := app.GApp().CwmpTable().GetCwmpCpe(dev.Sn)
 	taskCount := 0
 
 	// Task 1: Username + Password (PPPoE only)
@@ -478,6 +518,18 @@ func cwmpSetWanParams(dev models.NetCpe, devIdx, connIdx int, connType, username
 		if password != "" {
 			authParams[connPath+"Password"] = cwmp.ValueStruct{Type: "xsd:string", Value: password}
 		}
+		session := fmt.Sprintf("Wan-SetWanAuth-%s", common.UUID())
+		msg := &cwmp.SetParameterValues{ID: session, NoMore: 0, Params: authParams}
+		// Send directly to CPE channel for immediate execution
+		err := cpe.SendCwmpEventData(models.CwmpEventData{
+			Session: session,
+			Sn:      dev.Sn,
+			Message: msg,
+		}, 5000, true)
+		if err != nil {
+			log.Errorf("Failed to send WAN Auth task to channel: %s", err.Error())
+		}
+		// Also persist to DB for tracking
 		if err := createWifiPresetTask(dev.Sn, "SetWanAuth", "wan-auth", authParams, taskCount); err != nil {
 			return err
 		}
@@ -491,6 +543,18 @@ func cwmpSetWanParams(dev models.NetCpe, devIdx, connIdx int, connType, username
 		vlanParams[devPath+"X_CT-COM_WANGponLinkConfig.VLANIDMark"] = cwmp.ValueStruct{Type: "xsd:unsignedInt", Value: vlanID}
 		// Also set at connection level
 		vlanParams[connPath+"X_CT-COM_VLANIDMark"] = cwmp.ValueStruct{Type: "xsd:unsignedInt", Value: vlanID}
+		session := fmt.Sprintf("Wan-SetWanVLAN-%s", common.UUID())
+		msg := &cwmp.SetParameterValues{ID: session, NoMore: 0, Params: vlanParams}
+		// Send directly to CPE channel for immediate execution
+		err := cpe.SendCwmpEventData(models.CwmpEventData{
+			Session: session,
+			Sn:      dev.Sn,
+			Message: msg,
+		}, 5000, true)
+		if err != nil {
+			log.Errorf("Failed to send WAN VLAN task to channel: %s", err.Error())
+		}
+		// Also persist to DB for tracking
 		if err := createWifiPresetTask(dev.Sn, "SetWanVLAN", "wan-vlan", vlanParams, taskCount); err != nil {
 			return err
 		}
@@ -501,6 +565,18 @@ func cwmpSetWanParams(dev models.NetCpe, devIdx, connIdx int, connType, username
 	if ipMode != "" {
 		ipParams := make(map[string]cwmp.ValueStruct)
 		ipParams[connPath+"X_CT-COM_IPMode"] = cwmp.ValueStruct{Type: "xsd:unsignedInt", Value: ipMode}
+		session := fmt.Sprintf("Wan-SetWanIPMode-%s", common.UUID())
+		msg := &cwmp.SetParameterValues{ID: session, NoMore: 0, Params: ipParams}
+		// Send directly to CPE channel for immediate execution
+		err := cpe.SendCwmpEventData(models.CwmpEventData{
+			Session: session,
+			Sn:      dev.Sn,
+			Message: msg,
+		}, 5000, true)
+		if err != nil {
+			log.Errorf("Failed to send WAN IPMode task to channel: %s", err.Error())
+		}
+		// Also persist to DB for tracking
 		if err := createWifiPresetTask(dev.Sn, "SetWanIPMode", "wan-ipmode", ipParams, taskCount); err != nil {
 			return err
 		}
@@ -511,6 +587,18 @@ func cwmpSetWanParams(dev models.NetCpe, devIdx, connIdx int, connType, username
 	if enable == "true" || enable == "false" {
 		enParams := make(map[string]cwmp.ValueStruct)
 		enParams[connPath+"Enable"] = cwmp.ValueStruct{Type: "xsd:boolean", Value: enable}
+		session := fmt.Sprintf("Wan-SetWanEnable-%s", common.UUID())
+		msg := &cwmp.SetParameterValues{ID: session, NoMore: 0, Params: enParams}
+		// Send directly to CPE channel for immediate execution
+		err := cpe.SendCwmpEventData(models.CwmpEventData{
+			Session: session,
+			Sn:      dev.Sn,
+			Message: msg,
+		}, 5000, true)
+		if err != nil {
+			log.Errorf("Failed to send WAN Enable task to channel: %s", err.Error())
+		}
+		// Also persist to DB for tracking
 		if err := createWifiPresetTask(dev.Sn, "SetWanEnable", "wan-enable", enParams, taskCount); err != nil {
 			return err
 		}
@@ -521,7 +609,7 @@ func cwmpSetWanParams(dev models.NetCpe, devIdx, connIdx int, connType, username
 		return fmt.Errorf("no WAN params to set")
 	}
 
-	log.Infof("cwmpSetWanParams: created %d tasks for sn=%s dev=%d conn=%d type=%s", taskCount, dev.Sn, devIdx, connIdx, connType)
+	log.Infof("cwmpSetWanParams: created %d tasks for sn=%s dev=%d conn=%d type=%s, sent directly to CPE channel", taskCount, dev.Sn, devIdx, connIdx, connType)
 
 	session := "WanTrigger-" + common.UUID()
 	go connectDeviceAuth(session, dev)
