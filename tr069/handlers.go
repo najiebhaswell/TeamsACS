@@ -225,12 +225,25 @@ func (s *Tr069Server) Tr069Index(c echo.Context) error {
 					log.Error2("UpdateCwmpPresetTaskStatus error",
 						zap.String("namespace", "tr069"), zap.Error(err))
 				}
-				// Check for more pending preset tasks (e.g., Enable after SSID change)
 				cpe := app.GApp().CwmpTable().GetCwmpCpe(lastestSn)
+				// Check for more pending preset tasks from DB (e.g., Enable after SSID change)
 				ptask, pterr := cpe.GetLatestCwmpPresetTask()
 				if pterr == nil && ptask != nil && len(ptask.Request) > 0 {
-					log.Infof("SetParameterValuesResponse: sending next preset task %s", ptask.Name)
+					log.Infof("SetParameterValuesResponse: sending next preset task from DB %s", ptask.Name)
 					return xmlCwmpMessage(c, []byte(ptask.Request))
+				}
+				// Also check channel for any pending direct commands
+				qmsg, qerr := cpe.RecvCwmpEventData(100, true)
+				if qerr != nil {
+					qmsg, _ = cpe.RecvCwmpEventData(100, false)
+				}
+				if qmsg != nil {
+					if qmsg.Session != "" {
+						events.PubEventCwmpSuperviseStatus(lastestSn, qmsg.Session, "info",
+							fmt.Sprintf("Send Cwmp %s Message %s", qmsg.Message.GetName(), common.ToJson(qmsg.Message)))
+					}
+					log.Infof("SetParameterValuesResponse: sending pending task from channel for sn=%s", lastestSn)
+					return xmlCwmpMessage(c, qmsg.Message.CreateXML())
 				}
 			}
 		case "GetParameterNamesResponse":
@@ -340,6 +353,22 @@ func (s *Tr069Server) processInform(c echo.Context, lastInform *cwmp.Inform, msg
 	response := resp.CreateXML()
 
 	go s.processInformEvent(c, lastInform)
+
+	// Check channel for pending messages (e.g., WiFi/WAN params set from dashboard)
+	// This allows immediate execution without waiting for empty POST
+	cpe := app.GApp().CwmpTable().GetCwmpCpe(lastInform.Sn)
+	qmsg, qerr := cpe.RecvCwmpEventData(100, true)
+	if qerr != nil {
+		qmsg, _ = cpe.RecvCwmpEventData(100, false)
+	}
+	if qmsg != nil {
+		if qmsg.Session != "" {
+			events.PubEventCwmpSuperviseStatus(lastInform.Sn, qmsg.Session, "info",
+				fmt.Sprintf("Send Cwmp %s Message %s", qmsg.Message.GetName(), common.ToJson(qmsg.Message)))
+		}
+		log.Infof("processInform: sending pending task from channel for sn=%s", lastInform.Sn)
+		return xmlCwmpMessage(c, qmsg.Message.CreateXML())
+	}
 
 	return xmlCwmpMessage(c, response)
 }
