@@ -11,3 +11,4 @@ __debug_bin
 /log_info.log
 /assets/tr069_teamsacs_dev.rsc
 /Makefile.local
+cookie.txt

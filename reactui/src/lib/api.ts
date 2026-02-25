@@ -11,7 +11,8 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
         ...(options.headers as Record<string, string> || {}),
     }
 
-    if (!(options.body instanceof FormData)) {
+    // Only set Content-Type for requests with body
+    if (options.body && !(options.body instanceof FormData)) {
         headers['Content-Type'] = 'application/json'
     }
 
@@ -21,9 +22,22 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
         headers,
     })
 
-    if (res.status === 401) {
+    // Check if redirected to login page
+    if (res.redirected && res.url.includes('/login')) {
+        window.location.href = '/reactui/login'
+        throw new Error('Session expired')
+    }
+
+    if (res.status === 401 || res.status === 307) {
         window.location.href = '/reactui/login'
         throw new Error('Unauthorized')
+    }
+
+    // Verify we got JSON, not HTML
+    const contentType = res.headers.get('content-type') || ''
+    if (!contentType.includes('json')) {
+        console.error('API returned non-JSON response:', res.url, contentType)
+        throw new Error('Invalid API response')
     }
 
     return res.json()

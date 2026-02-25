@@ -17,8 +17,6 @@ export default function LoginPage() {
         setLoading(true)
 
         try {
-            // The /login POST endpoint redirects on success/failure
-            // We use redirect: 'manual' to catch the redirect and inspect it
             const fd = new FormData()
             fd.append('username', username)
             fd.append('password', password)
@@ -27,30 +25,18 @@ export default function LoginPage() {
                 method: 'POST',
                 body: fd,
                 credentials: 'include',
-                redirect: 'manual',
+                redirect: 'follow',
             })
 
-            // Status 0 = opaque redirect (browser follows it)
-            // Status 301/302 = redirect (we can read location)
-            if (res.type === 'opaqueredirect' || res.status === 0) {
-                // Login succeeded (redirect to /), navigate to React overview
-                window.location.href = '/reactui/overview'
-                return
-            }
+            // After following redirects, check where we ended up
+            const finalUrl = res.url || ''
 
-            if (res.status === 301 || res.status === 302) {
-                const location = res.headers.get('Location') || ''
-                if (location.includes('errmsg=')) {
-                    const msg = decodeURIComponent(location.split('errmsg=')[1] || 'Login failed')
-                    setError(msg)
-                } else if (location === '/' || location === '') {
-                    window.location.href = '/reactui/overview'
-                    return
-                } else {
-                    setError('Login failed')
-                }
+            if (finalUrl.includes('errmsg=')) {
+                // Login failed — extract error message
+                const msg = decodeURIComponent(finalUrl.split('errmsg=')[1]?.split('&')[0] || 'Login failed')
+                setError(msg)
             } else if (res.ok) {
-                // Redirect happened and we ended up at the homepage
+                // Login succeeded — navigate to React UI
                 window.location.href = '/reactui/overview'
                 return
             } else {
