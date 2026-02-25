@@ -75,23 +75,38 @@ func execCwmp(c echo.Context, id string, deviceId int64, session string) error {
 func connectDeviceAuth(session string, dev models.NetCpe) {
 	if dev.CwmpUrl == "" {
 		log.Infof("connectDeviceAuth: no CwmpUrl for sn=%s", dev.Sn)
+		events.PubSuperviseLog(dev.ID, session, "error", "CPE ConnectionRequestURL is empty, device may not be online or never sent Inform")
 		return
 	}
-	password := app.GApp().GetTr069SettingsStringValue("CpeConnectionRequestPassword")
-	log.Infof("connectDeviceAuth: sending to %s user=%s", dev.CwmpUrl, dev.Sn)
-	isok, err := cwmp.ConnectionRequestAuth(dev.Sn, password, dev.CwmpUrl)
-	if err != nil {
-		log.Infof("connectDeviceAuth: FAILED %s err=%s", dev.CwmpUrl, err.Error())
-		events.PubSuperviseLog(dev.ID, session, "error",
-			fmt.Sprintf("TR069 connect device %s failure %s", dev.CwmpUrl, err.Error()))
+	configuredPass := app.GApp().GetTr069SettingsStringValue("CpeConnectionRequestPassword")
+
+	// Try configured credentials first, then common factory defaults
+	type cred struct{ user, pass string }
+	attempts := []cred{
+		{dev.Sn, configuredPass},
+		{"cpe", "cpe"},
+		{"admin", "admin"},
+		{dev.Sn, ""},
+		{"", ""},
 	}
 
-	if isok {
-		log.Infof("connectDeviceAuth: SUCCESS %s", dev.CwmpUrl)
-		events.PubSuperviseLog(dev.ID, session, "info", fmt.Sprintf("TR069 connect device %s success", dev.CwmpUrl))
-	} else if err == nil {
-		log.Infof("connectDeviceAuth: REJECTED %s (not 200)", dev.CwmpUrl)
+	for _, c := range attempts {
+		log.Infof("connectDeviceAuth: trying Connection Request to %s user=%s session=%s", dev.CwmpUrl, c.user, session)
+		isok, err := cwmp.ConnectionRequestAuth(c.user, c.pass, dev.CwmpUrl)
+		if err != nil {
+			log.Infof("connectDeviceAuth: FAILED %s user=%s err=%s", dev.CwmpUrl, c.user, err.Error())
+			continue
+		}
+		if isok {
+			log.Infof("connectDeviceAuth: SUCCESS with user=%s - CPE should be connecting now %s", c.user, dev.CwmpUrl)
+			events.PubSuperviseLog(dev.ID, session, "info", fmt.Sprintf("TR069 Connection Request success (user=%s) - CPE %s should connect immediately", c.user, dev.CwmpUrl))
+			return
+		}
+		log.Infof("connectDeviceAuth: REJECTED with user=%s %s, trying next", c.user, dev.CwmpUrl)
 	}
+
+	events.PubSuperviseLog(dev.ID, session, "warn",
+		fmt.Sprintf("TR069 Connection Request to %s failed with all credential attempts", dev.CwmpUrl))
 }
 
 func cwmpDeviceInfoUpdate(sid string, dev models.NetCpe, session string) {
@@ -474,9 +489,15 @@ func cwmpSetWifiParams(dev models.NetCpe, ssidIdx int, ssid, password, channel, 
 
 	log.Infof("cwmpSetWifiParams: created %d tasks for sn=%s idx=%d, sent directly to CPE channel", taskCount, dev.Sn, ssidIdx)
 
-	// Trigger CPE to connect and pick up the tasks if not already connected
+	// Trigger CPE to connect immediately via Connection Request (ACS-initiated)
+	// This is the key difference from waiting for periodic Inform
 	session := "WifiTrigger-" + common.UUID()
-	go connectDeviceAuth(session, dev)
+	go func() {
+		// Small delay to ensure tasks are fully queued
+		time.Sleep(500 * time.Millisecond)
+		log.Infof("cwmpSetWifiParams: sending Connection Request to %s", dev.CwmpUrl)
+		connectDeviceAuth(session, dev)
+	}()
 
 	return nil
 }
@@ -563,8 +584,19 @@ func cwmpSetWanParams(dev models.NetCpe, devIdx, connIdx int, connType, username
 
 	// Task 3: IP Mode
 	if ipMode != "" {
+		// Convert display strings to numeric TR-069 values
+		// 1=IPv4, 2=IPv6, 3=IPv4&IPv6(Dual Stack)
+		ipModeNumeric := ipMode
+		switch ipMode {
+		case "IPv4":
+			ipModeNumeric = "1"
+		case "IPv6":
+			ipModeNumeric = "2"
+		case "IPv4&IPv6", "Dual Stack", "Dual":
+			ipModeNumeric = "3"
+		}
 		ipParams := make(map[string]cwmp.ValueStruct)
-		ipParams[connPath+"X_CT-COM_IPMode"] = cwmp.ValueStruct{Type: "xsd:unsignedInt", Value: ipMode}
+		ipParams[connPath+"X_CT-COM_IPMode"] = cwmp.ValueStruct{Type: "xsd:unsignedInt", Value: ipModeNumeric}
 		session := fmt.Sprintf("Wan-SetWanIPMode-%s", common.UUID())
 		msg := &cwmp.SetParameterValues{ID: session, NoMore: 0, Params: ipParams}
 		// Send directly to CPE channel for immediate execution
@@ -611,8 +643,14 @@ func cwmpSetWanParams(dev models.NetCpe, devIdx, connIdx int, connType, username
 
 	log.Infof("cwmpSetWanParams: created %d tasks for sn=%s dev=%d conn=%d type=%s, sent directly to CPE channel", taskCount, dev.Sn, devIdx, connIdx, connType)
 
+	// Trigger CPE to connect immediately via Connection Request (ACS-initiated)
 	session := "WanTrigger-" + common.UUID()
-	go connectDeviceAuth(session, dev)
+	go func() {
+		// Small delay to ensure tasks are fully queued
+		time.Sleep(500 * time.Millisecond)
+		log.Infof("cwmpSetWanParams: sending Connection Request to %s", dev.CwmpUrl)
+		connectDeviceAuth(session, dev)
+	}()
 
 	return nil
 }

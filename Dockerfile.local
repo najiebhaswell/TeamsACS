@@ -6,6 +6,9 @@ RUN apk add --no-cache postgresql14-client
 COPY ./release/teamsacs /usr/local/bin/teamsacs
 RUN chmod +x /usr/local/bin/teamsacs
 
+COPY ./assets/static /var/teamsacs/static
+RUN chmod -R 755 /var/teamsacs/static
+
 EXPOSE 2979 2989 2999
 
 CMD ["/usr/local/bin/teamsacs"]

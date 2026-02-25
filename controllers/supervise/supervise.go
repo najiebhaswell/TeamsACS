@@ -1,6 +1,7 @@
 package supervise
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -209,6 +210,46 @@ func InitRouter() {
 			return c.JSON(http.StatusOK, web.RestError(fmt.Sprintf("Failed to create WAN task: %s", err.Error())))
 		}
 
+		// Immediately update wan_info in DB so dashboard reflects changes
+		if dev.WanInfo != "" {
+			var wanEntries []map[string]interface{}
+			if json.Unmarshal([]byte(dev.WanInfo), &wanEntries) == nil {
+				for i, entry := range wanEntries {
+					eDevIdx, _ := entry["dev_idx"].(string)
+					eConnIdx, _ := entry["conn_idx"].(string)
+					eType, _ := entry["type"].(string)
+					if eDevIdx == c.FormValue("dev_idx") && eConnIdx == c.FormValue("conn_idx") && eType == connType {
+						if username != "" {
+							wanEntries[i]["username"] = username
+						}
+						if vlanID != "" {
+							wanEntries[i]["vlan_id"] = vlanID
+						}
+						if enable == "true" || enable == "false" {
+							wanEntries[i]["enable"] = enable
+						}
+						if ipMode != "" {
+							// Store the display value matching parseWanConnections
+							switch ipMode {
+							case "IPv4":
+								wanEntries[i]["ip_mode"] = "IPv4"
+							case "IPv6":
+								wanEntries[i]["ip_mode"] = "IPv6"
+							case "Dual Stack", "Dual":
+								wanEntries[i]["ip_mode"] = "Dual Stack"
+							default:
+								wanEntries[i]["ip_mode"] = ipMode
+							}
+						}
+						break
+					}
+				}
+				if updated, err2 := json.Marshal(wanEntries); err2 == nil {
+					app.GDB().Model(&models.NetCpe{}).Where("id=?", devid).Update("wan_info", string(updated))
+				}
+			}
+		}
+
 		webserver.PubOpLog(c, fmt.Sprintf(
 			"Set WAN params for %s: dev=%d conn=%d type=%s",
 			dev.Sn, devIdx, connIdx, connType))
@@ -243,6 +284,65 @@ func InitRouter() {
 
 		webserver.PubOpLog(c, fmt.Sprintf("Reboot device %s", dev.Sn))
 		return c.JSON(200, web.RestSucc("Reboot command sent"))
+	})
+
+	webserver.POST("/admin/supervise/webcreds/push", func(c echo.Context) error {
+		sn := c.FormValue("sn")
+		if sn == "" {
+			return c.JSON(http.StatusOK, web.RestError("Missing device SN"))
+		}
+
+		var dev models.NetCpe
+		err := app.GDB().Where("sn=?", sn).First(&dev).Error
+		if err != nil {
+			return c.JSON(http.StatusOK, web.RestError("Device not found"))
+		}
+
+		session := "webcreds-push-" + common.UUID()
+		cpe := app.GApp().CwmpTable().GetCwmpCpe(dev.Sn)
+		err = cpe.PushWebCredentials(session, 1000, false)
+		if err != nil {
+			return c.JSON(http.StatusOK, web.RestError(fmt.Sprintf("Failed to push credentials: %s", err.Error())))
+		}
+
+		// Trigger Connection Request so device picks up the queued SetParameterValues immediately
+		go connectDeviceAuth(session, dev)
+
+		webserver.PubOpLog(c, fmt.Sprintf("Push web credentials to %s", dev.Sn))
+		return c.JSON(200, web.RestSucc("Web credentials push command sent"))
+	})
+
+	// Push web credentials to ALL online devices
+	webserver.POST("/admin/supervise/webcreds/pushall", func(c echo.Context) error {
+		var devices []models.NetCpe
+		err := app.GDB().Where("cwmp_status = ?", "online").Find(&devices).Error
+		if err != nil {
+			return c.JSON(http.StatusOK, web.RestError("Failed to query devices"))
+		}
+
+		pushed := 0
+		for _, dev := range devices {
+			session := "pushall-" + common.UUID()
+			cpe := app.GApp().CwmpTable().GetCwmpCpe(dev.Sn)
+
+			// Push web credentials
+			err := cpe.PushWebCredentials(session+"-creds", 1000, false)
+			if err != nil {
+				log.Errorf("PushWebCredentials failed for %s: %s", dev.Sn, err.Error())
+			}
+
+			// Push periodic inform settings
+			err = cpe.PushPeriodicInform(session+"-inform", 1000, false)
+			if err != nil {
+				log.Errorf("PushPeriodicInform failed for %s: %s", dev.Sn, err.Error())
+			}
+
+			go connectDeviceAuth(session, dev)
+			pushed++
+		}
+
+		webserver.PubOpLog(c, fmt.Sprintf("Push settings to all devices: %d/%d", pushed, len(devices)))
+		return c.JSON(200, web.RestSucc(fmt.Sprintf("Settings pushed to %d devices", pushed)))
 	})
 
 }

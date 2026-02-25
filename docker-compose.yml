@@ -25,7 +25,12 @@ services:
       - "2989:2989"
       - "2999:2999"
     volumes:
-      - teamsacs-volume:/var/teamsacs
+      - teamsacs-data:/var/teamsacs/data
+      - teamsacs-logs:/var/teamsacs/logs
+      - teamsacs-backup:/var/teamsacs/backup
+      - teamsacs-private:/var/teamsacs/private
+      - teamsacs-public:/var/teamsacs/public
+      - teamsacs-cwmp:/var/teamsacs/cwmp
     environment:
       - GODEBUG=x509ignoreCN=0
       - TEAMSACS_DB_HOST=pgdb
@@ -43,4 +48,9 @@ networks:
 
 volumes:
   pgdb-volume:
-  teamsacs-volume:
+  teamsacs-data:
+  teamsacs-logs:
+  teamsacs-backup:
+  teamsacs-private:
+  teamsacs-public:
+  teamsacs-cwmp:

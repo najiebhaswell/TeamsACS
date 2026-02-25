@@ -53,6 +53,14 @@ func (a *Application) checkSettings() {
 			checkConfig(sortid, "tr069", ConfigTR069AccessPassword, "teamsacstr069password", "Teamsacs TR069 access password, It is provided to CPE to access TeamsACS")
 		case ConfigCpeConnectionRequestPassword:
 			checkConfig(sortid, "tr069", ConfigCpeConnectionRequestPassword, "teamsacscpepassword", "CPE Connection authentication password, It is provided to TeamsACS to access CPE")
+		case ConfigOntWebAdminUsername:
+			checkConfig(sortid, "tr069", ConfigOntWebAdminUsername, "gmedia", "ONT Web super admin username (pushed to all ONT devices)")
+		case ConfigOntWebAdminPassword:
+			checkConfig(sortid, "tr069", ConfigOntWebAdminPassword, "S1liw4n9i508", "ONT Web super admin password (pushed to all ONT devices)")
+		case ConfigOntWebUserUsername:
+			checkConfig(sortid, "tr069", ConfigOntWebUserUsername, "fiberstream", "ONT Web user username (pushed to all ONT devices)")
+		case ConfigOntWebUserPassword:
+			checkConfig(sortid, "tr069", ConfigOntWebUserPassword, "fiberstream.net.id", "ONT Web user password (pushed to all ONT devices)")
 		}
 	}
 

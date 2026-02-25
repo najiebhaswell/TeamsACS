@@ -260,6 +260,42 @@ func (c *CwmpCpe) CheckRegister(ip string, msg *cwmp.Inform) {
 }
 
 func (c *CwmpCpe) UpdateManagementAuthInfo(session string, timeout int, hp bool) error {
+	// Detect data model from LastInform parameters
+	prefix := "Device.ManagementServer."
+	if c.LastInform != nil {
+		for paramName := range c.LastInform.Params {
+			if strings.HasPrefix(paramName, "InternetGatewayDevice.") {
+				prefix = "InternetGatewayDevice.ManagementServer."
+				break
+			}
+		}
+	}
+
+	params := map[string]cwmp.ValueStruct{
+		prefix + "ConnectionRequestUsername": {
+			Type:  "xsd:string",
+			Value: c.Sn,
+		},
+		prefix + "ConnectionRequestPassword": {
+			Type:  "xsd:string",
+			Value: app.GetTr069SettingsStringValue("CpeConnectionRequestPassword"),
+		},
+		prefix + "PeriodicInformEnable": {
+			Type:  "xsd:boolean",
+			Value: "true",
+		},
+		prefix + "PeriodicInformInterval": {
+			Type: "xsd:unsignedInt",
+			Value: func() string {
+				v := app.GetTr069SettingsStringValue("CpePeriodicInformInterval")
+				if v == "" {
+					return "60"
+				}
+				return v
+			}(),
+		},
+	}
+
 	return c.SendCwmpEventData(models.CwmpEventData{
 		Session: session,
 		Sn:      c.Sn,
@@ -267,16 +303,101 @@ func (c *CwmpCpe) UpdateManagementAuthInfo(session string, timeout int, hp bool)
 			ID:     session,
 			Name:   "",
 			NoMore: 0,
-			Params: map[string]cwmp.ValueStruct{
-				"Device.ManagementServer.ConnectionRequestUsername": {
-					Type:  "xsd:string",
-					Value: c.Sn,
-				},
-				"Device.ManagementServer.ConnectionRequestPassword": {
-					Type:  "xsd:string",
-					Value: app.GetTr069SettingsStringValue("CpeConnectionRequestPassword"),
-				},
-			},
+			Params: params,
+		},
+	}, timeout, hp)
+}
+
+// PushPeriodicInform pushes periodic inform settings to the device
+func (c *CwmpCpe) PushPeriodicInform(session string, timeout int, hp bool) error {
+	prefix := "Device.ManagementServer."
+	if c.LastInform != nil {
+		for paramName := range c.LastInform.Params {
+			if strings.HasPrefix(paramName, "InternetGatewayDevice.") {
+				prefix = "InternetGatewayDevice.ManagementServer."
+				break
+			}
+		}
+	}
+
+	interval := app.GetTr069SettingsStringValue("CpePeriodicInformInterval")
+	if interval == "" {
+		interval = "60"
+	}
+
+	params := map[string]cwmp.ValueStruct{
+		prefix + "PeriodicInformEnable": {
+			Type:  "xsd:boolean",
+			Value: "true",
+		},
+		prefix + "PeriodicInformInterval": {
+			Type:  "xsd:unsignedInt",
+			Value: interval,
+		},
+	}
+
+	return c.SendCwmpEventData(models.CwmpEventData{
+		Session: session,
+		Sn:      c.Sn,
+		Message: &cwmp.SetParameterValues{
+			ID:     session,
+			Name:   "",
+			NoMore: 0,
+			Params: params,
+		},
+	}, timeout, hp)
+}
+
+// PushWebCredentials pushes ONT web admin and user credentials to the device
+// Uses vendor-specific TR-069 parameter paths based on device manufacturer
+func (c *CwmpCpe) PushWebCredentials(session string, timeout int, hp bool) error {
+	adminUser := app.GetTr069SettingsStringValue(ConfigOntWebAdminUsername)
+	adminPass := app.GetTr069SettingsStringValue(ConfigOntWebAdminPassword)
+	userUser := app.GetTr069SettingsStringValue(ConfigOntWebUserUsername)
+	userPass := app.GetTr069SettingsStringValue(ConfigOntWebUserPassword)
+
+	if adminUser == "" && adminPass == "" && userUser == "" && userPass == "" {
+		return nil
+	}
+
+	params := make(map[string]cwmp.ValueStruct)
+	m := strings.ToLower(c.Manufacturer)
+
+	// Determine vendor-specific paths — only use paths known to work per vendor
+	switch {
+	case strings.Contains(m, "zte"):
+		// ZTE only supports X_ZTE-COM_UserInterface paths
+		if adminPass != "" {
+			params["InternetGatewayDevice.X_ZTE-COM_UserInterface.X_ZTE-COM_WebUserInfo.AdminPassword"] = cwmp.ValueStruct{Type: "xsd:string", Value: adminPass}
+		}
+		if userUser != "" {
+			params["InternetGatewayDevice.X_ZTE-COM_UserInterface.X_ZTE-COM_WebUserInfo.UserName"] = cwmp.ValueStruct{Type: "xsd:string", Value: userUser}
+		}
+		if userPass != "" {
+			params["InternetGatewayDevice.X_ZTE-COM_UserInterface.X_ZTE-COM_WebUserInfo.UserPassword"] = cwmp.ValueStruct{Type: "xsd:string", Value: userPass}
+		}
+	default:
+		// CDATA/CDTC and other TR-098 devices — use X_CT-COM_TeleComAccount
+		if adminUser != "" {
+			params["InternetGatewayDevice.DeviceInfo.X_CT-COM_TeleComAccount.Username"] = cwmp.ValueStruct{Type: "xsd:string", Value: adminUser}
+		}
+		if adminPass != "" {
+			params["InternetGatewayDevice.DeviceInfo.X_CT-COM_TeleComAccount.Password"] = cwmp.ValueStruct{Type: "xsd:string", Value: adminPass}
+		}
+	}
+
+	if len(params) == 0 {
+		return nil
+	}
+
+	return c.SendCwmpEventData(models.CwmpEventData{
+		Session: session,
+		Sn:      c.Sn,
+		Message: &cwmp.SetParameterValues{
+			ID:     session,
+			Name:   "",
+			NoMore: 0,
+			Params: params,
 		},
 	}, timeout, hp)
 }
@@ -925,6 +1046,11 @@ func (c *CwmpCpe) OnInformUpdate() {
 		"InternetGatewayDevice.DeviceInfo.MemoryStatus.Total"))
 	// Vendor-specific parameters
 	c.applyVendorSpecificParams(valmap, msg)
+
+	// Fallback: if pon_sn_hex was not found in Inform params, use device SN from DeviceId
+	if _, ok := valmap["pon_sn_hex"]; !ok && c.Sn != "" {
+		valmap["pon_sn_hex"] = c.Sn
+	}
 
 	if len(valmap) > 0 {
 		err := app.gormDB.Model(&models.NetCpe{}).Where("sn=?", c.Sn).Updates(valmap)

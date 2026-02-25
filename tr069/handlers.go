@@ -192,27 +192,26 @@ func (s *Tr069Server) Tr069Index(c echo.Context) error {
 				events.PubEventCwmpSuperviseStatus(lastestSn, msg.GetID(), "info",
 					fmt.Sprintf("Recv Cwmp %s Message %s", msg.GetName(), common.ToJson(msg)))
 			}
-			// Check DB preset tasks for pending commands after processing response
+			// Chain: Check channel FIRST for immediate pending commands (WiFi/WAN params)
 			if lastestSn != "" {
-				log.Infof("GetParameterValuesResponse: checking preset tasks for sn=%s", lastestSn)
 				cpe := app.GApp().CwmpTable().GetCwmpCpe(lastestSn)
-				ptask, pterr := cpe.GetLatestCwmpPresetTask()
-				log.Infof("GetParameterValuesResponse: preset task result: err=%v, task=%v", pterr, ptask != nil)
-				if pterr == nil && ptask != nil && len(ptask.Request) > 0 {
-					log.Infof("GetParameterValuesResponse: sending preset task %s", ptask.Name)
-					return xmlCwmpMessage(c, []byte(ptask.Request))
-				}
-				// Also check memory queue
-				qmsg, qerr := cpe.RecvCwmpEventData(500, true)
+				qmsg, qerr := cpe.RecvCwmpEventData(50, true)
 				if qerr != nil {
-					qmsg, _ = cpe.RecvCwmpEventData(500, false)
+					qmsg, _ = cpe.RecvCwmpEventData(50, false)
 				}
 				if qmsg != nil {
 					if qmsg.Session != "" {
 						events.PubEventCwmpSuperviseStatus(lastestSn, qmsg.Session, "info",
 							fmt.Sprintf("Send Cwmp %s Message %s", qmsg.Message.GetName(), common.ToJson(qmsg.Message)))
 					}
+					log.Infof("GetParameterValuesResponse: chaining pending task from channel for sn=%s", lastestSn)
 					return xmlCwmpMessage(c, qmsg.Message.CreateXML())
+				}
+				// Then check DB preset tasks
+				ptask, pterr := cpe.GetLatestCwmpPresetTask()
+				if pterr == nil && ptask != nil && len(ptask.Request) > 0 {
+					log.Infof("GetParameterValuesResponse: chaining next preset task from DB %s", ptask.Name)
+					return xmlCwmpMessage(c, []byte(ptask.Request))
 				}
 			}
 		case "SetParameterValuesResponse":
@@ -226,24 +225,24 @@ func (s *Tr069Server) Tr069Index(c echo.Context) error {
 						zap.String("namespace", "tr069"), zap.Error(err))
 				}
 				cpe := app.GApp().CwmpTable().GetCwmpCpe(lastestSn)
-				// Check for more pending preset tasks from DB (e.g., Enable after SSID change)
-				ptask, pterr := cpe.GetLatestCwmpPresetTask()
-				if pterr == nil && ptask != nil && len(ptask.Request) > 0 {
-					log.Infof("SetParameterValuesResponse: sending next preset task from DB %s", ptask.Name)
-					return xmlCwmpMessage(c, []byte(ptask.Request))
-				}
-				// Also check channel for any pending direct commands
-				qmsg, qerr := cpe.RecvCwmpEventData(100, true)
+				// Chain: Check channel FIRST for immediate pending commands (WiFi/WAN params)
+				qmsg, qerr := cpe.RecvCwmpEventData(50, true)
 				if qerr != nil {
-					qmsg, _ = cpe.RecvCwmpEventData(100, false)
+					qmsg, _ = cpe.RecvCwmpEventData(50, false)
 				}
 				if qmsg != nil {
 					if qmsg.Session != "" {
 						events.PubEventCwmpSuperviseStatus(lastestSn, qmsg.Session, "info",
 							fmt.Sprintf("Send Cwmp %s Message %s", qmsg.Message.GetName(), common.ToJson(qmsg.Message)))
 					}
-					log.Infof("SetParameterValuesResponse: sending pending task from channel for sn=%s", lastestSn)
+					log.Infof("SetParameterValuesResponse: chaining pending task from channel for sn=%s", lastestSn)
 					return xmlCwmpMessage(c, qmsg.Message.CreateXML())
+				}
+				// Then check DB preset tasks for pending commands
+				ptask, pterr := cpe.GetLatestCwmpPresetTask()
+				if pterr == nil && ptask != nil && len(ptask.Request) > 0 {
+					log.Infof("SetParameterValuesResponse: chaining next preset task from DB %s", ptask.Name)
+					return xmlCwmpMessage(c, []byte(ptask.Request))
 				}
 			}
 		case "GetParameterNamesResponse":
@@ -354,22 +353,6 @@ func (s *Tr069Server) processInform(c echo.Context, lastInform *cwmp.Inform, msg
 
 	go s.processInformEvent(c, lastInform)
 
-	// Check channel for pending messages (e.g., WiFi/WAN params set from dashboard)
-	// This allows immediate execution without waiting for empty POST
-	cpe := app.GApp().CwmpTable().GetCwmpCpe(lastInform.Sn)
-	qmsg, qerr := cpe.RecvCwmpEventData(100, true)
-	if qerr != nil {
-		qmsg, _ = cpe.RecvCwmpEventData(100, false)
-	}
-	if qmsg != nil {
-		if qmsg.Session != "" {
-			events.PubEventCwmpSuperviseStatus(lastInform.Sn, qmsg.Session, "info",
-				fmt.Sprintf("Send Cwmp %s Message %s", qmsg.Message.GetName(), common.ToJson(qmsg.Message)))
-		}
-		log.Infof("processInform: sending pending task from channel for sn=%s", lastInform.Sn)
-		return xmlCwmpMessage(c, qmsg.Message.CreateXML())
-	}
-
 	return xmlCwmpMessage(c, response)
 }
 
@@ -400,6 +383,10 @@ func (s *Tr069Server) processInformEvent(c echo.Context, lastInform *cwmp.Inform
 		if err != nil {
 			log.Error2("UpdateManagementAuthInfo error", zap.String("namespace", "tr069"), zap.Error(err))
 		}
+		err = cpe.PushWebCredentials("webcreds-session-"+common.UUID(), 1000, false)
+		if err != nil {
+			log.Error2("PushWebCredentials error", zap.String("namespace", "tr069"), zap.Error(err))
+		}
 	case lastInform.IsEvent(cwmp.EventBoot) && lastInform.RetryCount == 0:
 		err := cpe.ActiveCwmpSchedEventTask()
 		if err != nil {
@@ -413,10 +400,26 @@ func (s *Tr069Server) processInformEvent(c echo.Context, lastInform *cwmp.Inform
 		if err != nil {
 			log.Error2("UpdateManagementAuthInfo error ", zap.String("namespace", "tr069"), zap.Error(err))
 		}
+		err = cpe.PushWebCredentials("webcreds-session-"+common.UUID(), 1000, false)
+		if err != nil {
+			log.Error2("PushWebCredentials error", zap.String("namespace", "tr069"), zap.Error(err))
+		}
 	case lastInform.IsEvent(cwmp.EventPeriodic) && lastInform.RetryCount == 0:
 		err := cpe.CreateCwmpPresetEventTask(app.PeriodicEvent, "")
 		if err != nil {
 			log.Error2("CreateCwmpPresetEventTask error ", zap.String("namespace", "tr069"), zap.Error(err))
+		}
+	case lastInform.IsEvent(cwmp.EventConnectionRequest) && lastInform.RetryCount == 0:
+		// Device connected due to Connection Request — push any pending settings
+		log.Info2("processInformEvent: Connection Request inform, pushing settings",
+			zap.String("namespace", "tr069"), zap.String("sn", lastInform.Sn))
+		err := cpe.UpdateManagementAuthInfo("connreq-session-"+common.UUID(), 1000, false)
+		if err != nil {
+			log.Error2("UpdateManagementAuthInfo error", zap.String("namespace", "tr069"), zap.Error(err))
+		}
+		err = cpe.PushWebCredentials("connreq-creds-"+common.UUID(), 1000, false)
+		if err != nil {
+			log.Error2("PushWebCredentials error", zap.String("namespace", "tr069"), zap.Error(err))
 		}
 	case lastInform.IsEvent(cwmp.EventScheduled) && lastInform.RetryCount == 0:
 		err := cpe.CreateCwmpSchedEventTask(lastInform.CommandKey)

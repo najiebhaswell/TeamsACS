@@ -10,6 +10,10 @@ const (
 	ConfigTR069AccessPassword          = "TR069AccessPassword"
 	ConfigCpeConnectionRequestPassword = "CpeConnectionRequestPassword"
 	ConfigCpeAutoRegister              = "CpeAutoRegister"
+	ConfigOntWebAdminUsername          = "OntWebAdminUsername"
+	ConfigOntWebAdminPassword          = "OntWebAdminPassword"
+	ConfigOntWebUserUsername           = "OntWebUserUsername"
+	ConfigOntWebUserPassword           = "OntWebUserPassword"
 )
 
 // Device type constants
@@ -30,4 +34,8 @@ var ConfigConstants = []string{
 	ConfigTR069AccessPassword,
 	ConfigCpeConnectionRequestPassword,
 	ConfigCpeAutoRegister,
+	ConfigOntWebAdminUsername,
+	ConfigOntWebAdminPassword,
+	ConfigOntWebUserUsername,
+	ConfigOntWebUserPassword,
 }

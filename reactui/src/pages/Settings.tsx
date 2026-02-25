@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Cog, Radio, Save, Check } from 'lucide-react'
+import { Cog, Radio, Save, Check, Eye, EyeOff, Loader2 } from 'lucide-react'
 
 interface ConfigItem {
     name: string
@@ -33,6 +33,8 @@ export default function SettingsPage() {
     const [form, setForm] = useState<ConfigValues>({})
     const [dirty, setDirty] = useState(false)
     const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+    const [showSensitive, setShowSensitive] = useState<Record<string, boolean>>({})
+    const [pushingAll, setPushingAll] = useState(false)
 
     const { data: configList } = useQuery({
         queryKey: ['config-list'],
@@ -56,15 +58,31 @@ export default function SettingsPage() {
             const payload: Record<string, string> = { ctype: activeTab, ...values }
             return api.postForm<ApiResponse>('/admin/settings/update', payload)
         },
-        onSuccess: (res) => {
+        onSuccess: async (res) => {
             if (res.code !== undefined && res.code !== 0) {
                 setToast({ type: 'error', msg: res.msg || 'Save failed' })
             } else {
                 setDirty(false)
-                setToast({ type: 'success', msg: 'Settings saved successfully' })
                 queryClient.invalidateQueries({ queryKey: ['config-values', activeTab] })
+                queryClient.invalidateQueries({ queryKey: ['tr069-settings'] })
+
+                // Auto-push to all ONTs when saving TR-069 settings
+                if (activeTab === 'tr069') {
+                    setPushingAll(true)
+                    try {
+                        const pushRes = await fetch('/admin/supervise/webcreds/pushall', { method: 'POST' })
+                        const pushData = await pushRes.json()
+                        setToast({ type: 'success', msg: pushData.msg || 'Settings saved & pushed to all devices' })
+                    } catch {
+                        setToast({ type: 'success', msg: 'Settings saved, but push to devices failed' })
+                    } finally {
+                        setPushingAll(false)
+                    }
+                } else {
+                    setToast({ type: 'success', msg: 'Settings saved successfully' })
+                }
             }
-            setTimeout(() => setToast(null), 3000)
+            setTimeout(() => setToast(null), 4000)
         },
         onError: () => {
             setToast({ type: 'error', msg: 'Failed to save settings' })
@@ -93,15 +111,20 @@ export default function SettingsPage() {
     }
 
     // Friendly labels for config keys
-    const labelMap: Record<string, { label: string; description: string }> = {
+    const labelMap: Record<string, { label: string; description: string; sensitive?: boolean }> = {
         SystemTitle: { label: 'System Title', description: 'The title displayed in the browser tab and header' },
         SystemTheme: { label: 'Theme', description: 'UI theme (light / dark)' },
         SystemLoginRemark: { label: 'Login Remark', description: 'Message shown on the login page' },
         SystemLoginSubtitle: { label: 'Login Subtitle', description: 'Subtitle on the login form' },
         TR069AccessAddress: { label: 'TR-069 Access Address', description: 'TeamsACS TR-069 server URL (HTTP/HTTPS)' },
-        TR069AccessPassword: { label: 'TR-069 Access Password', description: 'Password for CPE to access TeamsACS' },
-        CpeConnectionRequestPassword: { label: 'CPE Connection Password', description: 'Password for TeamsACS to access CPE' },
+        TR069AccessPassword: { label: 'TR-069 Access Password', description: 'Password for CPE to access TeamsACS', sensitive: true },
+        CpeConnectionRequestPassword: { label: 'CPE Connection Password', description: 'Password for TeamsACS to access CPE', sensitive: true },
         CpeAutoRegister: { label: 'Auto Register CPE', description: 'Automatically register new CPE devices (enabled/disabled)' },
+        OntWebAdminUsername: { label: 'ONT Super Admin Username', description: 'Default super admin username pushed to all ONT devices' },
+        OntWebAdminPassword: { label: 'ONT Super Admin Password', description: 'Default super admin password pushed to all ONT devices', sensitive: true },
+        OntWebUserUsername: { label: 'ONT User Username', description: 'Default user username pushed to all ONT devices' },
+        OntWebUserPassword: { label: 'ONT User Password', description: 'Default user password pushed to all ONT devices', sensitive: true },
+        CpePeriodicInformInterval: { label: 'Periodic Inform Interval', description: 'Interval in seconds for CPE periodic inform (default: 60)' },
     }
 
     return (
@@ -129,11 +152,11 @@ export default function SettingsPage() {
                     <Button
                         size="sm"
                         onClick={handleSave}
-                        disabled={!dirty || saveMutation.isPending}
+                        disabled={!dirty || saveMutation.isPending || pushingAll}
                         className="bg-blue-600 hover:bg-blue-500 disabled:opacity-40"
                     >
-                        <Save className="w-4 h-4 mr-1" />
-                        {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
+                        {(saveMutation.isPending || pushingAll) ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Save className="w-4 h-4 mr-1" />}
+                        {pushingAll ? 'Pushing to devices...' : saveMutation.isPending ? 'Saving...' : 'Save Changes'}
                     </Button>
                 </div>
             </div>
@@ -179,17 +202,31 @@ export default function SettingsPage() {
                         Object.entries(form).length > 0 ? (
                             Object.entries(form).map(([key, value]) => {
                                 const meta = labelMap[key] || { label: key, description: '' }
+                                const isSensitive = 'sensitive' in meta && meta.sensitive
+                                const isVisible = showSensitive[key]
                                 return (
                                     <div key={key} className="space-y-1.5">
                                         <Label className="text-sm text-on-surface-secondary">{meta.label}</Label>
                                         {meta.description && (
                                             <p className="text-xs text-on-surface-muted">{meta.description}</p>
                                         )}
-                                        <Input
-                                            value={value}
-                                            onChange={(e) => handleChange(key, e.target.value)}
-                                            className="bg-surface-input border-surface-border text-on-surface placeholder:text-on-surface-muted"
-                                        />
+                                        <div className="relative">
+                                            <Input
+                                                type={isSensitive && !isVisible ? 'password' : 'text'}
+                                                value={value}
+                                                onChange={(e) => handleChange(key, e.target.value)}
+                                                className="bg-surface-input border-surface-border text-on-surface placeholder:text-on-surface-muted pr-10"
+                                            />
+                                            {isSensitive && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowSensitive(prev => ({ ...prev, [key]: !prev[key] }))}
+                                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-muted hover:text-on-surface"
+                                                >
+                                                    {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 )
                             })

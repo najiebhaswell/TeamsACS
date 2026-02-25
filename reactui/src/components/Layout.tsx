@@ -10,6 +10,7 @@ import {
     X,
     Moon,
     Sun,
+    FileText,
 } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -19,6 +20,7 @@ const navItems = [
     { to: '/overview', label: 'Overview', icon: LayoutDashboard },
     { to: '/cpe', label: 'CPE Devices', icon: MonitorSmartphone },
     { to: '/system', label: 'System Status', icon: Activity },
+    { to: '/logs', label: 'Logs', icon: FileText },
     { to: '/settings', label: 'Settings', icon: Settings },
 ]
 

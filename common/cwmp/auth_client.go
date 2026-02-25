@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 type myjar struct {
@@ -31,21 +32,25 @@ func ConnectionRequestAuth(username string, password string, uri string) (bool, 
 	}
 	uriPath := parsedUrl.RequestURI()
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
 	jar := &myjar{}
 	jar.jar = make(map[string][]*http.Cookie)
 	client.Jar = jar
-	var req *http.Request
-	var resp *http.Response
-	var err error
-	req, err = http.NewRequest("GET", uri, nil)
+
+	// First request to get the 401 challenge
+	req, err := http.NewRequest("GET", uri, nil)
 	if err != nil {
 		return false, err
 	}
-	resp, err = client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return false, err
 	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+
 	if resp.StatusCode == 401 {
 		var authorization map[string]string = DigestAuthParams(resp)
 		realmHeader := authorization["realm"]
@@ -69,15 +74,23 @@ func ConnectionRequestAuth(username string, password string, uri string) (bool, 
 		cnonce := RandomKey()
 		response := H(strings.Join([]string{HA1, nonceHeader, "00000001", cnonce, qopHeader, HA2}, ":"))
 
-		// now make header
+		// Create a NEW request for the authenticated attempt
+		req2, err := http.NewRequest("GET", uri, nil)
+		if err != nil {
+			return false, err
+		}
 		AuthHeader := fmt.Sprintf(`Digest username="%s", realm="%s", nonce="%s", uri="%s", cnonce="%s", nc=00000001, qop=%s, response="%s", opaque="%s", algorithm=MD5`,
 			username, realmHeader, nonceHeader, uriPath, cnonce, qopHeader, response, opaqueHeader)
-		req.Header.Set("Authorization", AuthHeader)
-		resp, err = client.Do(req)
-	} else {
-		return false, fmt.Errorf("response status code should have been 401, it was %v", resp.StatusCode)
+		req2.Header.Set("Authorization", AuthHeader)
+		resp2, err := client.Do(req2)
+		if err != nil {
+			return false, err
+		}
+		io.Copy(io.Discard, resp2.Body)
+		resp2.Body.Close()
+		return resp2.StatusCode == 200, nil
 	}
-	return resp.StatusCode == 200, err
+	return false, fmt.Errorf("response status code should have been 401, it was %v", resp.StatusCode)
 }
 
 /*

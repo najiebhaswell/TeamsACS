@@ -7,6 +7,7 @@ import CpeListPage from '@/pages/CpeList'
 import CpeDetailPage from '@/pages/CpeDetail'
 import SystemStatusPage from '@/pages/SystemStatus'
 import SettingsPage from '@/pages/Settings'
+import LogsPage from '@/pages/Logs'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,6 +31,7 @@ export default function App() {
             <Route path="/cpe/:id" element={<CpeDetailPage />} />
             <Route path="/system" element={<SystemStatusPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/logs" element={<LogsPage />} />
             <Route path="/" element={<Navigate to="/overview" replace />} />
           </Route>
         </Routes>
