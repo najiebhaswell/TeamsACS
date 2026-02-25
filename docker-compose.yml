@@ -25,6 +25,7 @@ services:
       - "2989:2989"
       - "2999:2999"
     volumes:
+      - ./teamsacs:/usr/local/bin/teamsacs
       - teamsacs-data:/var/teamsacs/data
       - teamsacs-logs:/var/teamsacs/logs
       - teamsacs-backup:/var/teamsacs/backup

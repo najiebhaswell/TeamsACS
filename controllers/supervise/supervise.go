@@ -345,4 +345,10 @@ func InitRouter() {
 		return c.JSON(200, web.RestSucc(fmt.Sprintf("Settings pushed to %d devices", pushed)))
 	})
 
+	// OLT SNMP integration
+	initOltRouter()
+
+	// ODC & ODP management
+	initOdcOdpRouter()
+
 }

@@ -55,4 +55,10 @@ var Tables = []interface{}{
 	&CwmpFirmwareConfig{},
 	&CwmpPreset{},
 	&CwmpPresetTask{},
+	// OLT
+	&OltDevice{},
+	&OltOnuData{},
+	// ODC & ODP
+	&OdcDevice{},
+	&OdpDevice{},
 }

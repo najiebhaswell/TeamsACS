@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, type ApiResponse } from '@/lib/api'
@@ -11,7 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
     ArrowLeft, RotateCcw, Wifi, WifiOff, Radio, Router,
     Signal, Activity, Cpu, HardDrive, Globe, Search, Zap, Network,
-    Pencil, Save, X, Check, Loader2, Lock, Eye, EyeOff,
+    Pencil, Save, X, Check, Loader2, Lock, Eye, EyeOff, Server,
+    Cable, MapPin, ChevronRight,
 } from 'lucide-react'
 
 interface NetCpe {
@@ -42,6 +43,7 @@ interface NetCpe {
     pon_mode: string
     registration_id: string
     task_tags: string
+    odp_id: string
     created_at: string
     updated_at: string
 }
@@ -99,9 +101,9 @@ function formatUptime(seconds: number): string {
 
 function InfoRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
     return (
-        <div className="flex justify-between items-center py-2 border-b border-surface-border last:border-0">
-            <span className="text-on-surface-secondary text-sm">{label}</span>
-            <span className={`text-on-surface text-sm ${mono ? 'font-mono' : ''}`}>{value || '—'}</span>
+        <div className="flex justify-between items-center py-1.5 border-b border-white/[0.04] last:border-0 gap-4">
+            <span className="text-on-surface-secondary text-sm shrink-0">{label}</span>
+            <span className={`text-on-surface text-sm text-right ${mono ? 'font-mono' : ''}`}>{value || '—'}</span>
         </div>
     )
 }
@@ -145,6 +147,12 @@ export default function CpeDetailPage() {
     const [wanForm, setWanForm] = useState({ username: '', password: '', vlan_id: '', enable: 'true', ip_mode: '' })
     const [wanSaving, setWanSaving] = useState(false)
 
+    // OLT ONU data (fetched by serial number)
+    const [oltData, setOltData] = useState<any>(null)
+    const [topoData, setTopoData] = useState<any>(null)
+    const [odpOptions, setOdpOptions] = useState<{ id: string; name: string }[]>([])
+    const [detailTab, setDetailTab] = useState<'overview' | 'network' | 'wifi' | 'credentials' | 'parameters'>('overview')
+
     const { data: device, isLoading } = useQuery({
         queryKey: ['cpe-detail', id],
         queryFn: () => api.get<NetCpe>(`/admin/cpe/get?id=${id}`),
@@ -162,11 +170,30 @@ export default function CpeDetailPage() {
         queryFn: () => api.get<Record<string, string>>('/admin/settings/tr069/query'),
     })
 
+    // Fetch OLT data for this CPE by serial number
+    useEffect(() => {
+        if (!device?.sn) return
+        fetch(`/admin/olt/onu/${device.sn}`, { credentials: 'include' })
+            .then(r => r.json())
+            .then(d => { if (d.found) setOltData(d) })
+            .catch(() => { })
+        // Fetch topology
+        fetch(`/admin/olt/topology/${device.sn}`, { credentials: 'include' })
+            .then(r => r.json())
+            .then(d => { if (d.found) setTopoData(d) })
+            .catch(() => { })
+        // Fetch ODP options
+        fetch('/admin/odp/options', { credentials: 'include' })
+            .then(r => r.json())
+            .then(d => setOdpOptions(d || []))
+            .catch(() => { })
+    }, [device?.sn])
+
     const wifiList: WifiItem[] = (() => {
         try {
             const all: WifiItem[] = device?.wifi_ssid ? JSON.parse(device.wifi_ssid) : []
-            // Filter out entries with empty SSID names (internal/unused)
-            return all.filter(w => w.ssid && w.ssid.trim() !== '')
+            // Filter: only idx 1-8 (4 per band), exclude empty SSIDs and internal management SSIDs (idx 9+)
+            return all.filter(w => w.ssid && w.ssid.trim() !== '' && w.idx <= 8)
         } catch { return [] }
     })()
 
@@ -466,7 +493,7 @@ export default function CpeDetailPage() {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-3">
             {/* Toast */}
             {toast && (
                 <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg text-sm font-medium shadow-lg flex items-center gap-2 ${toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'}`}>
@@ -530,557 +557,370 @@ export default function CpeDetailPage() {
                 </div>
             </div>
 
-            {/* Info Cards */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                {/* Left column: Device Info + Network & Registration */}
-                <div className="flex flex-col gap-4">
-                    {/* Device Info */}
-                    <Card className={`bg-surface border-surface-border ${editing ? 'ring-2 ring-blue-500/30' : ''}`}>
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-base text-on-surface flex items-center gap-2">
-                                <Cpu className="w-4 h-4 text-blue-400" /> Device Information
-                                {editing && <Badge variant="info" className="text-[10px] ml-auto">Editing</Badge>}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-0">
-                            <InfoRow label="Serial Number" value={device.sn} mono />
-                            {editing ? (
-                                <EditableRow
-                                    label="Name"
-                                    value={editForm.name}
-                                    onChange={v => setEditForm(f => ({ ...f, name: v }))}
-                                    placeholder="Device name"
-                                />
-                            ) : (
-                                <InfoRow label="Name" value={device.name} />
-                            )}
-                            <InfoRow label="Manufacturer" value={device.manufacturer} />
-                            <InfoRow label="Model" value={device.model} />
-                            <InfoRow label="Software Version" value={device.software_version} />
-                            <InfoRow label="Hardware Version" value={device.hardware_version} />
-                            {editing ? (
-                                <EditableRow
-                                    label="Remark"
-                                    value={editForm.remark}
-                                    onChange={v => setEditForm(f => ({ ...f, remark: v }))}
-                                    placeholder="Notes about this device"
-                                />
-                            ) : (
-                                <InfoRow label="Remark" value={device.remark} />
-                            )}
-                        </CardContent>
-                    </Card>
+            {/* Compact Topology */}
+            {topoData && (
+                <div className="flex items-center gap-0 overflow-x-auto py-2 px-3 bg-surface rounded-lg border border-surface-border">
+                    <span className="text-[10px] text-on-surface-muted uppercase tracking-wider mr-3 shrink-0">Topology</span>
+                    <TopoNode icon={<Server className="w-3.5 h-3.5" />} color="blue" label="OLT" title={topoData.olt?.name || 'OLT'} subtitle={topoData.olt?.ip} status={topoData.olt?.status} />
+                    <TopoArrow />
+                    <TopoNode icon={<Zap className="w-3.5 h-3.5" />} color="violet" label="PON" title={topoData.pon_port || '—'} status="active" />
+                    <TopoArrow />
+                    {topoData.odcs?.length > 0
+                        ? <><TopoNode icon={<Cable className="w-3.5 h-3.5" />} color="cyan" label="ODC" title={topoData.odcs[0].name} status="active" /><TopoArrow /></>
+                        : <><TopoNode icon={<Cable className="w-3.5 h-3.5" />} color="gray" label="ODC" title="—" status="none" /><TopoArrow /></>}
+                    {topoData.odps?.length > 0
+                        ? <><TopoNode icon={<MapPin className="w-3.5 h-3.5" />} color="emerald" label="ODP" title={topoData.odps[0].name} status="active" /><TopoArrow /></>
+                        : <><TopoNode icon={<MapPin className="w-3.5 h-3.5" />} color="gray" label="ODP" title="—" status="none" /><TopoArrow /></>}
+                    <TopoNode icon={<Router className="w-3.5 h-3.5" />} color={topoData.onu?.phase_state === 'working' ? 'green' : 'red'} label="ONU" title={topoData.onu?.sn || device?.sn || '—'}
+                        status={topoData.onu?.phase_state} extra={topoData.onu?.rx_power && topoData.onu.rx_power !== 0 ? `${topoData.onu.rx_power.toFixed(1)} dBm` : undefined} />
+                </div>
+            )}
 
-                    {/* Network & Registration */}
-                    <Card className="bg-surface border-surface-border">
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-base text-on-surface flex items-center gap-2">
-                                <Network className="w-4 h-4 text-violet-400" /> Network & Registration
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-0">
-                            <InfoRow label="PON SN" value={device.pon_sn_hex} mono />
-                            <InfoRow label="OUI" value={device.oui} mono />
-                            <InfoRow label="Product Class" value={device.product_class} />
-                            <InfoRow label="PON Mode" value={device.pon_mode} />
-                            <InfoRow label="Registration ID" value={device.registration_id} mono />
-                            <InfoRow label="Registered" value={device.created_at ? new Date(device.created_at).toLocaleString() : undefined} />
-                            <InfoRow label="Tags" value={device.task_tags} />
-                        </CardContent>
-                    </Card>
+            {/* Tab Bar */}
+            <div className="flex gap-1 bg-surface-alt rounded-lg p-1 border border-surface-border overflow-x-auto sticky top-0 z-20">
+                {([
+                    ['overview', '📊 Overview'],
+                    ['network', '🌐 Network'],
+                    ['wifi', '📶 WiFi & LAN'],
+                    ['credentials', '🔑 Credentials'],
+                    ['parameters', '⚙️ Parameters'],
+                ] as const).map(([key, label]) => (
+                    <button key={key} onClick={() => setDetailTab(key)}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-all ${detailTab === key ? 'bg-blue-600 text-white shadow-sm' : 'text-on-surface-secondary hover:text-on-surface'}`}>
+                        {label}
+                    </button>
+                ))}
+            </div>
 
-                    {/* Optical Power */}
+            {/* ═══ OVERVIEW TAB ═══ */}
+            {detailTab === 'overview' && (
+                <div className="space-y-4">
+                    {/* Key Metrics Row */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <Card className="bg-surface border-surface-border hover:border-on-surface-muted/30 transition-colors">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-sm font-medium text-on-surface-secondary">RX Power</CardTitle>
+                                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/20"><Signal className="w-4 h-4 text-white" /></div>
+                            </CardHeader>
+                            <CardContent><div className="text-2xl font-bold text-on-surface font-mono">{device.fiber_rx_power ? device.fiber_rx_power.replace(/\s*dBm\s*/gi, '').trim() : '—'}</div>{device.fiber_rx_power && <span className="text-xs text-on-surface-muted">dBm</span>}</CardContent>
+                        </Card>
+                        <Card className="bg-surface border-surface-border hover:border-on-surface-muted/30 transition-colors">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-sm font-medium text-on-surface-secondary">TX Power</CardTitle>
+                                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/20"><Signal className="w-4 h-4 text-white" /></div>
+                            </CardHeader>
+                            <CardContent><div className="text-2xl font-bold text-on-surface font-mono">{device.fiber_tx_power ? device.fiber_tx_power.replace(/\s*dBm\s*/gi, '').trim() : '—'}</div>{device.fiber_tx_power && <span className="text-xs text-on-surface-muted">dBm</span>}</CardContent>
+                        </Card>
+                        <Card className="bg-surface border-surface-border hover:border-on-surface-muted/30 transition-colors">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-sm font-medium text-on-surface-secondary">Uptime</CardTitle>
+                                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-violet-600 flex items-center justify-center shadow-lg shadow-violet-500/20"><Activity className="w-4 h-4 text-white" /></div>
+                            </CardHeader>
+                            <CardContent><div className="text-2xl font-bold text-on-surface">{formatUptime(device.uptime)}</div></CardContent>
+                        </Card>
+                        <Card className="bg-surface border-surface-border hover:border-on-surface-muted/30 transition-colors">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-sm font-medium text-on-surface-secondary">CPU Usage</CardTitle>
+                                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/20"><Cpu className="w-4 h-4 text-white" /></div>
+                            </CardHeader>
+                            <CardContent><div className="text-2xl font-bold text-on-surface">{device.cpu_usage ? `${device.cpu_usage}%` : '—'}</div></CardContent>
+                        </Card>
+                    </div>
+                    {/* Device + System Cards */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <Card className={`bg-surface border-surface-border ${editing ? 'ring-2 ring-blue-500/30' : ''}`}>
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-base font-medium text-on-surface flex items-center gap-2"><Cpu className="w-4 h-4 text-blue-400" /> Device Information</CardTitle>
+                                {editing && <Badge variant="info" className="text-[10px]">Editing</Badge>}
+                            </CardHeader>
+                            <CardContent className="space-y-0">
+                                <InfoRow label="Serial Number" value={device.sn} mono />
+                                {editing ? <EditableRow label="Name" value={editForm.name} onChange={v => setEditForm(f => ({ ...f, name: v }))} placeholder="Device name" /> : <InfoRow label="Name" value={device.name} />}
+                                <InfoRow label="Manufacturer" value={device.manufacturer} />
+                                <InfoRow label="Model" value={device.model} />
+                                <InfoRow label="Software" value={device.software_version} />
+                                <InfoRow label="Hardware" value={device.hardware_version} />
+                                {editing ? <EditableRow label="Remark" value={editForm.remark} onChange={v => setEditForm(f => ({ ...f, remark: v }))} placeholder="Notes" /> : <InfoRow label="Remark" value={device.remark} />}
+                            </CardContent>
+                        </Card>
+                        <Card className="bg-surface border-surface-border">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-base font-medium text-on-surface flex items-center gap-2"><Activity className="w-4 h-4 text-emerald-400" /> System Status</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-0">
+                                <InfoRow label="CWMP URL" value={device.cwmp_url} mono />
+                                <InfoRow label="Last Inform" value={device.cwmp_last_inform ? new Date(device.cwmp_last_inform).toLocaleString() : undefined} />
+                                <InfoRow label="Memory Total" value={device.memory_total ? `${(device.memory_total / 1024).toFixed(1)} KB` : undefined} />
+                                <InfoRow label="Memory Free" value={device.memory_free ? `${(device.memory_free / 1024).toFixed(1)} KB` : undefined} />
+                                <InfoRow label="PON SN" value={device.pon_sn_hex} mono />
+                                <InfoRow label="PON Mode" value={device.pon_mode} />
+                                <InfoRow label="Registered" value={device.created_at ? new Date(device.created_at).toLocaleString() : undefined} />
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══ NETWORK TAB ═══ */}
+            {detailTab === 'network' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                    <div className="flex flex-col gap-4">
+                        <Card className="bg-surface border-surface-border">
+                            <CardHeader className="pb-3"><CardTitle className="text-base font-medium text-on-surface flex items-center gap-2"><Network className="w-4 h-4 text-violet-400" /> Network & Registration</CardTitle></CardHeader>
+                            <CardContent className="space-y-0">
+                                <InfoRow label="PON SN" value={device.pon_sn_hex} mono />
+                                <InfoRow label="OUI" value={device.oui} mono />
+                                <InfoRow label="Product Class" value={device.product_class} />
+                                <InfoRow label="PON Mode" value={device.pon_mode} />
+                                <InfoRow label="Registration ID" value={device.registration_id} mono />
+                                <InfoRow label="Registered" value={device.created_at ? new Date(device.created_at).toLocaleString() : undefined} />
+                                <InfoRow label="Tags" value={device.task_tags} />
+                            </CardContent>
+                        </Card>
+                        {oltData && (
+                            <Card className="bg-surface border-surface-border">
+                                <CardHeader className="pb-3"><CardTitle className="text-base font-medium text-on-surface flex items-center gap-2">
+                                    <Server className="w-4 h-4 text-cyan-400" /> OLT Information
+                                    <span className={`ml-auto text-xs px-2 py-0.5 rounded ${oltData.onu?.phase_state === 'working' ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>{oltData.onu?.phase_state || 'unknown'}</span>
+                                </CardTitle></CardHeader>
+                                <CardContent className="space-y-0">
+                                    <InfoRow label="OLT" value={`${oltData.olt_name} (${oltData.olt_ip})`} />
+                                    <InfoRow label="OLT Model" value={oltData.olt_model} />
+                                    <InfoRow label="System Name" value={oltData.sys_name} />
+                                    <InfoRow label="PON Port" value={oltData.onu?.pon_port} mono />
+                                    <InfoRow label="ONU ID" value={oltData.onu?.onu_id} />
+                                    <InfoRow label="ONU Type" value={oltData.onu?.onu_type} />
+                                    <InfoRow label="Rx Power (OLT)" value={
+                                        oltData.onu?.rx_power && oltData.onu.rx_power !== 0
+                                            ? <span className={`font-mono font-bold ${oltData.onu.rx_power > -25 ? 'text-green-400' : oltData.onu.rx_power > -28 ? 'text-yellow-400' : 'text-red-400'}`}>{oltData.onu.rx_power.toFixed(2)} dBm</span>
+                                            : '—'
+                                    } />
+                                    <InfoRow label="Last Online" value={oltData.onu?.online_time} />
+                                    <InfoRow label="Last Offline" value={oltData.onu?.offline_time} />
+                                    <div className="flex items-center justify-between py-1.5 border-t border-white/[0.04]">
+                                        <span className="text-sm text-on-surface-secondary">ODP</span>
+                                        {editing ? (
+                                            <select value={device.odp_id || '0'} onChange={async (e) => {
+                                                const fd = new FormData(); fd.append('cpe_id', String(device.id)); fd.append('odp_id', e.target.value)
+                                                await fetch('/admin/cpe/assign-odp', { method: 'POST', body: fd, credentials: 'include' })
+                                                queryClient.invalidateQueries({ queryKey: ['cpe-detail'] })
+                                                fetch(`/admin/olt/topology/${device.sn}`, { credentials: 'include' }).then(r => r.json()).then(d => { if (d.found) setTopoData(d) })
+                                            }} className="bg-surface-input border border-surface-border text-on-surface text-sm rounded px-2 py-1 cursor-pointer">
+                                                <option value="0">— None —</option>
+                                                {odpOptions.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                                            </select>
+                                        ) : (
+                                            <span className="text-sm text-on-surface">{odpOptions.find(o => String(o.id) === String(device.odp_id))?.name || '—'}</span>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+                    </div>
+                    <div className="flex flex-col gap-4">
+                        <Card className="bg-surface border-surface-border">
+                            <CardHeader className="pb-3"><CardTitle className="text-base font-medium text-on-surface flex items-center gap-2"><Globe className="w-4 h-4 text-indigo-400" /> WAN Connections</CardTitle></CardHeader>
+                            <CardContent className="p-0">
+                                {wanList.length === 0 ? (<div className="text-sm text-on-surface-muted p-4">No WAN data</div>) : (
+                                    <div className="overflow-x-hidden"><Table className="table-fixed w-full"><TableHeader><TableRow className="border-surface-border hover:bg-transparent">
+                                        <TableHead className="text-on-surface-secondary w-[28%]">Name</TableHead><TableHead className="text-on-surface-secondary w-[8%]">VLAN</TableHead>
+                                        <TableHead className="text-on-surface-secondary w-[22%]">IP</TableHead><TableHead className="text-on-surface-secondary w-[18%]">PPPoE</TableHead>
+                                        <TableHead className="text-on-surface-secondary w-[8%]">Mode</TableHead><TableHead className="text-on-surface-secondary w-[8%]">Status</TableHead>
+                                        <TableHead className="text-on-surface-secondary w-[8%] text-right">Action</TableHead>
+                                    </TableRow></TableHeader><TableBody>
+                                            {wanList.map((wan) => {
+                                                const wanKey = `${wan.dev_idx}-${wan.conn_idx}-${wan.type}`; const isWanEditing = wanEditKey === wanKey; return (
+                                                    <TableRow key={wanKey} className={`border-surface-border ${isWanEditing ? 'bg-blue-500/5' : ''}`}>
+                                                        <TableCell className="overflow-hidden"><div className="flex items-center gap-1.5"><span className="text-on-surface font-medium text-xs truncate">{wan.name || `WAN ${wan.dev_idx}.${wan.conn_idx}`}</span><Badge variant="info" className="text-[9px] px-1 py-0 shrink-0">{wan.type}</Badge></div>{wan.service && <div className="text-[10px] text-on-surface-muted truncate">{wan.service}</div>}</TableCell>
+                                                        <TableCell>{isWanEditing ? <Input value={wanForm.vlan_id} onChange={e => setWanForm(f => ({ ...f, vlan_id: e.target.value }))} className="h-6 text-xs bg-surface-input border-surface-border text-on-surface font-mono w-14" placeholder="VLAN" /> : <span className="text-on-surface-secondary text-xs font-mono">{wan.vlan_id || '—'}</span>}</TableCell>
+                                                        <TableCell className="overflow-hidden"><div className="text-on-surface-secondary text-xs font-mono truncate">{wan.ip || '—'}</div>{wan.ipv6_ip && <div className="text-on-surface-muted text-[10px] font-mono truncate" title={wan.ipv6_ip}>{wan.ipv6_ip}</div>}</TableCell>
+                                                        <TableCell className="overflow-hidden">{isWanEditing && wan.type === 'PPPoE' ? (<div className="space-y-1"><Input value={wanForm.username} onChange={e => setWanForm(f => ({ ...f, username: e.target.value }))} className="h-6 text-xs bg-surface-input border-surface-border text-on-surface font-mono w-full" placeholder="Username" /><Input value={wanForm.password} onChange={e => setWanForm(f => ({ ...f, password: e.target.value }))} className="h-6 text-xs bg-surface-input border-surface-border text-on-surface font-mono w-full" placeholder="Password" /></div>) : (<div className="text-on-surface-secondary text-xs font-mono truncate" title={wan.username}>{wan.username || '—'}</div>)}</TableCell>
+                                                        <TableCell>{isWanEditing ? (<select value={wanForm.ip_mode} onChange={e => setWanForm(f => ({ ...f, ip_mode: e.target.value }))} className="h-6 text-[10px] bg-surface-input border border-surface-border text-on-surface rounded px-1"><option value="IPv4">IPv4</option><option value="IPv6">IPv6</option><option value="Dual Stack">Dual</option></select>) : (<span className="text-on-surface-secondary text-xs">{wan.ip_mode || '—'}</span>)}</TableCell>
+                                                        <TableCell>{isWanEditing ? (<select value={wanForm.enable} onChange={e => setWanForm(f => ({ ...f, enable: e.target.value }))} className="h-6 text-[10px] bg-surface-input border border-surface-border text-on-surface rounded px-1"><option value="true">On</option><option value="false">Off</option></select>) : (<Badge variant={isEnabled(wan.enable) ? 'success' : 'warning'} className="text-[9px]">{isEnabled(wan.enable) ? 'On' : 'Off'}</Badge>)}</TableCell>
+                                                        <TableCell className="text-right">{isWanEditing ? (<div className="flex gap-0.5 justify-end"><Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-green-400 hover:text-green-300" onClick={() => handleWanSave(wan)} disabled={wanSaving}>{wanSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}</Button><Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-400 hover:text-red-300" onClick={() => setWanEditKey(null)} disabled={wanSaving}><X className="w-3 h-3" /></Button></div>) : (<Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-on-surface-secondary hover:text-on-surface" onClick={() => handleWanEdit(wan)}><Pencil className="w-3 h-3" /></Button>)}</TableCell>
+                                                    </TableRow>
+                                                )
+                                            })}
+                                        </TableBody></Table></div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══ WIFI & LAN TAB ═══ */}
+            {detailTab === 'wifi' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* WiFi SSIDs */}
                     <Card className="bg-surface border-surface-border">
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-base text-on-surface flex items-center gap-2">
-                                <Zap className="w-4 h-4 text-amber-400" /> Optical Power
-                            </CardTitle>
-                        </CardHeader>
+                        <CardHeader className="pb-2"><CardTitle className="text-base font-medium text-on-surface flex items-center gap-2"><Wifi className="w-4 h-4 text-cyan-400" /> WiFi SSIDs <span className="text-sm text-on-surface-muted font-normal">({wifiList.length})</span></CardTitle></CardHeader>
                         <CardContent>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-surface-input rounded-lg p-3 text-center">
-                                    <Signal className="w-5 h-5 text-emerald-400 mx-auto mb-1" />
-                                    <div className="text-[10px] text-on-surface-secondary mb-0.5">RX Power</div>
-                                    <div className="text-lg font-bold text-on-surface font-mono">
-                                        {device.fiber_rx_power ? device.fiber_rx_power.replace(/\s*dBm\s*/gi, '').trim() : '—'}
-                                    </div>
-                                    {device.fiber_rx_power && <div className="text-[10px] text-on-surface-muted">dBm</div>}
+                            {wifiList.length === 0 ? <div className="text-sm text-on-surface-muted py-2">No WiFi data</div> : (
+                                <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+                                    {wifiList.map((wifi) => {
+                                        const isEditing = wifiEditIdx === wifi.idx; return (
+                                            <div key={wifi.idx} className={`flex items-center gap-3 rounded-lg px-3 py-2 border ${isEditing ? 'border-blue-500/30 bg-blue-500/5' : 'border-white/[0.06] bg-white/[0.02]'}`}>
+                                                <Badge variant={wifi.idx >= 5 ? 'warning' : 'info'} className="text-[10px] px-1.5 py-0 shrink-0">{wifi.idx >= 5 ? '5G' : '2.4G'}</Badge>
+                                                {isEditing ? (
+                                                    <div className="flex-1 flex items-center gap-2">
+                                                        <Input value={wifiForm.ssid} onChange={e => setWifiForm(f => ({ ...f, ssid: e.target.value }))} className="h-7 text-sm bg-surface-input border-surface-border text-on-surface flex-1" placeholder="SSID" />
+                                                        <Input value={wifiForm.password} onChange={e => setWifiForm(f => ({ ...f, password: e.target.value }))} className="h-7 text-sm bg-surface-input border-surface-border text-on-surface font-mono w-32" placeholder="Password" />
+                                                        <button onClick={() => setWifiForm(f => ({ ...f, enable: f.enable === 'true' ? 'false' : 'true' }))} className={`text-xs px-2 py-0.5 rounded ${wifiForm.enable === 'true' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                                                            {wifiForm.enable === 'true' ? 'On' : 'Off'}
+                                                        </button>
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-green-400" onClick={() => handleWifiSave(wifi.idx)} disabled={wifiSaving}>{wifiSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}</Button>
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-red-400" onClick={() => setWifiEditIdx(null)}><X className="w-3.5 h-3.5" /></Button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <span className="text-sm text-on-surface font-medium flex-1 truncate">{wifi.ssid}</span>
+                                                        <span className="text-xs text-on-surface-muted font-mono">ch{wifi.channel}</span>
+                                                        {isEnabled(wifi.enable)
+                                                            ? <span className="text-xs text-emerald-400">●</span>
+                                                            : <span className="text-xs text-on-surface-muted">○</span>}
+                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-on-surface-muted hover:text-on-surface shrink-0" onClick={() => handleWifiEdit(wifi)}><Pencil className="w-3.5 h-3.5" /></Button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )
+                                    })}
                                 </div>
-                                <div className="bg-surface-input rounded-lg p-3 text-center">
-                                    <Signal className="w-5 h-5 text-blue-400 mx-auto mb-1" />
-                                    <div className="text-[10px] text-on-surface-secondary mb-0.5">TX Power</div>
-                                    <div className="text-lg font-bold text-on-surface font-mono">
-                                        {device.fiber_tx_power ? device.fiber_tx_power.replace(/\s*dBm\s*/gi, '').trim() : '—'}
-                                    </div>
-                                    {device.fiber_tx_power && <div className="text-[10px] text-on-surface-muted">dBm</div>}
-                                </div>
-                            </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                    {/* LAN Clients */}
+                    <Card className="bg-surface border-surface-border">
+                        <CardHeader className="pb-2"><CardTitle className="text-base font-medium text-on-surface flex items-center gap-2"><Network className="w-4 h-4 text-orange-400" /> LAN Clients <span className="text-sm text-on-surface-muted font-normal">({lanClients.length})</span></CardTitle></CardHeader>
+                        <CardContent className="p-0">
+                            {lanClients.length === 0 ? <div className="text-sm text-on-surface-muted p-6">No clients connected</div> : (
+                                <div className="max-h-[50vh] overflow-y-auto"><Table><TableHeader><TableRow className="border-surface-border hover:bg-transparent">
+                                    <TableHead className="text-on-surface-secondary">Hostname</TableHead><TableHead className="text-on-surface-secondary">IP Address</TableHead>
+                                    <TableHead className="text-on-surface-secondary">MAC Address</TableHead><TableHead className="text-on-surface-secondary">RSSI</TableHead><TableHead className="text-on-surface-secondary">Type</TableHead>
+                                </TableRow></TableHeader><TableBody>
+                                        {lanClients.map((client, i) => (
+                                            <TableRow key={i} className="border-surface-border">
+                                                <TableCell className="text-on-surface text-sm">{client.hostname || '—'}</TableCell>
+                                                <TableCell className="text-on-surface-secondary text-sm font-mono">{client.ip}</TableCell>
+                                                <TableCell className="text-on-surface-secondary text-xs font-mono">{client.mac}</TableCell>
+                                                <TableCell>{client.rssi ? <span className={`text-sm font-mono ${parseInt(client.rssi) > -50 ? 'text-green-400' : parseInt(client.rssi) > -70 ? 'text-yellow-400' : 'text-red-400'}`}>{client.rssi} dBm</span> : <span className="text-on-surface-muted text-sm">—</span>}</TableCell>
+                                                <TableCell>{client.interface === 'Ethernet' ? <Badge variant="info" className="text-[10px]">🔌 LAN</Badge> : <Badge variant="secondary" className="text-[10px] bg-cyan-500/10 text-cyan-400 border-transparent">📶 WiFi</Badge>}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody></Table></div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>
+            )}
 
-                {/* Right column: System Status + ONT Web Login */}
-                <div className="flex flex-col gap-4">
-                    {/* System Status */}
-                    <Card className="bg-surface border-surface-border">
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-base text-on-surface flex items-center gap-2">
-                                <Activity className="w-4 h-4 text-emerald-400" /> System Status
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-0">
-                            <InfoRow label="Uptime" value={formatUptime(device.uptime)} />
-                            <InfoRow label="CPU Usage" value={device.cpu_usage ? `${device.cpu_usage}%` : undefined} />
-                            <InfoRow label="Memory Total" value={device.memory_total ? `${(device.memory_total / 1024).toFixed(1)} KB` : undefined} />
-                            <InfoRow label="Memory Free" value={device.memory_free ? `${(device.memory_free / 1024).toFixed(1)} KB` : undefined} />
-                            <InfoRow label="CWMP URL" value={device.cwmp_url} mono />
-                            <InfoRow label="Last Inform" value={device.cwmp_last_inform ? new Date(device.cwmp_last_inform).toLocaleString() : undefined} />
-                        </CardContent>
-                    </Card>
-
-                    {/* ONT Web Login */}
-                    {(adminCreds || userCreds) && (
+            {/* ═══ CREDENTIALS TAB ═══ */}
+            {detailTab === 'credentials' && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {(adminCreds || userCreds) ? (
                         <Card className={`bg-surface border-surface-border ${editingCreds ? 'ring-2 ring-amber-500/30' : ''}`}>
-                            <CardHeader className="pb-3">
-                                <CardTitle className="text-base text-on-surface flex items-center gap-2">
+                            <CardHeader className="flex flex-row items-center justify-between pb-2">
+                                <CardTitle className="text-base font-medium text-on-surface flex items-center gap-2">
                                     <Lock className="w-4 h-4 text-amber-400" /> ONT Web Login
-                                    <div className="ml-auto flex items-center gap-1">
-                                        {editingCreds ? (
-                                            <>
-                                                <Button size="sm" variant="ghost" onClick={() => setEditingCreds(false)} className="h-6 px-2 text-xs text-on-surface-secondary">
-                                                    <X className="w-3 h-3 mr-1" /> Cancel
-                                                </Button>
-                                                <Button size="sm" onClick={saveCreds} disabled={credsSaving} className="h-6 px-2 text-xs bg-amber-500/20 text-amber-400 hover:bg-amber-500/30">
-                                                    {credsSaving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Save className="w-3 h-3 mr-1" />} Save
-                                                </Button>
-                                            </>
-                                        ) : (
-                                            <Button size="sm" variant="ghost" onClick={startEditCreds} className="h-6 px-2 text-xs text-on-surface-secondary hover:text-amber-400">
-                                                <Pencil className="w-3 h-3" />
-                                            </Button>
-                                        )}
-                                    </div>
                                 </CardTitle>
+                                <div className="flex items-center gap-1">
+                                    {editingCreds ? (<>
+                                        <Button size="sm" variant="ghost" onClick={() => setEditingCreds(false)} className="h-7 px-2 text-sm text-on-surface-secondary"><X className="w-3.5 h-3.5 mr-1" /> Cancel</Button>
+                                        <Button size="sm" onClick={saveCreds} disabled={credsSaving} className="h-7 px-3 text-sm bg-amber-500/20 text-amber-400 hover:bg-amber-500/30">{credsSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Save className="w-3.5 h-3.5 mr-1" />} Save</Button>
+                                    </>) : (<Button size="sm" variant="ghost" onClick={startEditCreds} className="h-7 px-2 text-sm text-on-surface-secondary hover:text-amber-400"><Pencil className="w-3.5 h-3.5" /></Button>)}
+                                </div>
                             </CardHeader>
-                            <CardContent className="space-y-0">
-                                {/* Super Admin */}
-                                <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-3 space-y-2 mb-3">
-                                    <span className="text-[10px] text-cyan-400 font-semibold uppercase tracking-wider">Super Admin</span>
-                                    <div className="space-y-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-on-surface-secondary uppercase w-14">User</span>
-                                            {editingCreds ? (
-                                                <Input value={credsForm.adminUser} onChange={e => setCredsForm(f => ({ ...f, adminUser: e.target.value }))}
-                                                    className="h-7 text-sm bg-surface-input border-surface-border text-on-surface font-mono flex-1" placeholder="Username" />
-                                            ) : (
-                                                <span className="text-sm text-on-surface font-mono truncate">{adminCreds?.username || '—'}</span>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-on-surface-secondary uppercase w-14">Pass</span>
-                                            {editingCreds ? (
-                                                <Input value={credsForm.adminPass} onChange={e => setCredsForm(f => ({ ...f, adminPass: e.target.value }))}
-                                                    className="h-7 text-sm bg-surface-input border-surface-border text-on-surface font-mono flex-1" placeholder="Password" />
-                                            ) : (
-                                                <>
-                                                    <span className="text-sm text-on-surface font-mono">
-                                                        {showAdminPass ? (adminCreds?.password || '—') : (adminCreds?.password ? '••••••••' : '—')}
-                                                    </span>
-                                                    {adminCreds?.password && (
-                                                        <button onClick={() => setShowAdminPass(!showAdminPass)} className="text-on-surface-muted hover:text-on-surface ml-auto">
-                                                            {showAdminPass ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                                        </button>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
+                            <CardContent className="space-y-3">
+                                <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-4 space-y-2">
+                                    <span className="text-xs text-cyan-400 font-semibold uppercase tracking-wider">Super Admin</span>
+                                    <div className="flex items-center gap-3"><span className="text-sm text-on-surface-secondary w-16">User</span>
+                                        {editingCreds ? <Input value={credsForm.adminUser} onChange={e => setCredsForm(f => ({ ...f, adminUser: e.target.value }))} className="h-8 text-sm bg-surface-input border-surface-border text-on-surface font-mono flex-1" placeholder="Username" /> : <span className="text-sm text-on-surface font-mono truncate">{adminCreds?.username || '—'}</span>}
+                                    </div>
+                                    <div className="flex items-center gap-3"><span className="text-sm text-on-surface-secondary w-16">Pass</span>
+                                        {editingCreds ? <Input value={credsForm.adminPass} onChange={e => setCredsForm(f => ({ ...f, adminPass: e.target.value }))} className="h-8 text-sm bg-surface-input border-surface-border text-on-surface font-mono flex-1" placeholder="Password" /> : (<>
+                                            <span className="text-sm text-on-surface font-mono">{showAdminPass ? (adminCreds?.password || '—') : (adminCreds?.password ? '••••••••' : '—')}</span>
+                                            {adminCreds?.password && <button onClick={() => setShowAdminPass(!showAdminPass)} className="text-on-surface-muted hover:text-on-surface ml-auto">{showAdminPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>}
+                                        </>)}
                                     </div>
                                 </div>
-                                {/* User */}
-                                <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-3 space-y-2">
-                                    <span className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider">User</span>
-                                    <div className="space-y-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-on-surface-secondary uppercase w-14">User</span>
-                                            {editingCreds ? (
-                                                <Input value={credsForm.userUser} onChange={e => setCredsForm(f => ({ ...f, userUser: e.target.value }))}
-                                                    className="h-7 text-sm bg-surface-input border-surface-border text-on-surface font-mono flex-1" placeholder="Username" />
-                                            ) : (
-                                                <span className="text-sm text-on-surface font-mono truncate">{userCreds?.username || '—'}</span>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-on-surface-secondary uppercase w-14">Pass</span>
-                                            {editingCreds ? (
-                                                <Input value={credsForm.userPass} onChange={e => setCredsForm(f => ({ ...f, userPass: e.target.value }))}
-                                                    className="h-7 text-sm bg-surface-input border-surface-border text-on-surface font-mono flex-1" placeholder="Password" />
-                                            ) : (
-                                                <>
-                                                    <span className="text-sm text-on-surface font-mono">
-                                                        {showUserPass ? (userCreds?.password || '—') : (userCreds?.password ? '••••••••' : '—')}
-                                                    </span>
-                                                    {userCreds?.password && (
-                                                        <button onClick={() => setShowUserPass(!showUserPass)} className="text-on-surface-muted hover:text-on-surface ml-auto">
-                                                            {showUserPass ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                                        </button>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
+                                <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-4 space-y-2">
+                                    <span className="text-xs text-emerald-400 font-semibold uppercase tracking-wider">User</span>
+                                    <div className="flex items-center gap-3"><span className="text-sm text-on-surface-secondary w-16">User</span>
+                                        {editingCreds ? <Input value={credsForm.userUser} onChange={e => setCredsForm(f => ({ ...f, userUser: e.target.value }))} className="h-8 text-sm bg-surface-input border-surface-border text-on-surface font-mono flex-1" placeholder="Username" /> : <span className="text-sm text-on-surface font-mono truncate">{userCreds?.username || '—'}</span>}
+                                    </div>
+                                    <div className="flex items-center gap-3"><span className="text-sm text-on-surface-secondary w-16">Pass</span>
+                                        {editingCreds ? <Input value={credsForm.userPass} onChange={e => setCredsForm(f => ({ ...f, userPass: e.target.value }))} className="h-8 text-sm bg-surface-input border-surface-border text-on-surface font-mono flex-1" placeholder="Password" /> : (<>
+                                            <span className="text-sm text-on-surface font-mono">{showUserPass ? (userCreds?.password || '—') : (userCreds?.password ? '••••••••' : '—')}</span>
+                                            {userCreds?.password && <button onClick={() => setShowUserPass(!showUserPass)} className="text-on-surface-muted hover:text-on-surface ml-auto">{showUserPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>}
+                                        </>)}
                                     </div>
                                 </div>
                             </CardContent>
                         </Card>
-                    )}
-
-                    {/* WAN Connections */}
-                    <Card className="bg-surface border-surface-border">
-                        <CardHeader className="pb-3">
-                            <CardTitle className="text-base text-on-surface flex items-center gap-2">
-                                <Globe className="w-4 h-4 text-indigo-400" /> WAN Connections
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-0">
-                            {wanList.length === 0 ? (
-                                <div className="text-sm text-on-surface-muted p-4">No WAN data</div>
-                            ) : (
-                                <div className="overflow-x-hidden">
-                                    <Table className="table-fixed w-full">
-                                        <TableHeader>
-                                            <TableRow className="border-surface-border hover:bg-transparent">
-                                                <TableHead className="text-on-surface-secondary w-[28%]">Name</TableHead>
-                                                <TableHead className="text-on-surface-secondary w-[8%]">VLAN</TableHead>
-                                                <TableHead className="text-on-surface-secondary w-[22%]">IP</TableHead>
-                                                <TableHead className="text-on-surface-secondary w-[18%]">PPPoE</TableHead>
-                                                <TableHead className="text-on-surface-secondary w-[8%]">Mode</TableHead>
-                                                <TableHead className="text-on-surface-secondary w-[8%]">Status</TableHead>
-                                                <TableHead className="text-on-surface-secondary w-[8%] text-right">Action</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {wanList.map((wan) => {
-                                                const wanKey = `${wan.dev_idx}-${wan.conn_idx}-${wan.type}`
-                                                const isWanEditing = wanEditKey === wanKey
-                                                return (
-                                                    <TableRow key={wanKey} className={`border-surface-border ${isWanEditing ? 'bg-blue-500/5' : ''}`}>
-                                                        <TableCell className="overflow-hidden">
-                                                            <div className="flex items-center gap-1.5">
-                                                                <span className="text-on-surface font-medium text-xs truncate">{wan.name || `WAN ${wan.dev_idx}.${wan.conn_idx}`}</span>
-                                                                <Badge variant="info" className="text-[9px] px-1 py-0 shrink-0">{wan.type}</Badge>
-                                                            </div>
-                                                            {wan.service && <div className="text-[10px] text-on-surface-muted truncate">{wan.service}</div>}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {isWanEditing ? (
-                                                                <Input
-                                                                    value={wanForm.vlan_id}
-                                                                    onChange={e => setWanForm(f => ({ ...f, vlan_id: e.target.value }))}
-                                                                    className="h-6 text-xs bg-surface-input border-surface-border text-on-surface font-mono w-14"
-                                                                    placeholder="VLAN"
-                                                                />
-                                                            ) : (
-                                                                <span className="text-on-surface-secondary text-xs font-mono">{wan.vlan_id || '—'}</span>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell className="overflow-hidden">
-                                                            <div className="text-on-surface-secondary text-xs font-mono truncate">{wan.ip || '—'}</div>
-                                                            {wan.ipv6_ip && <div className="text-on-surface-muted text-[10px] font-mono truncate" title={wan.ipv6_ip}>{wan.ipv6_ip}</div>}
-                                                        </TableCell>
-                                                        <TableCell className="overflow-hidden">
-                                                            {isWanEditing && wan.type === 'PPPoE' ? (
-                                                                <div className="space-y-1">
-                                                                    <Input
-                                                                        value={wanForm.username}
-                                                                        onChange={e => setWanForm(f => ({ ...f, username: e.target.value }))}
-                                                                        className="h-6 text-xs bg-surface-input border-surface-border text-on-surface font-mono w-full"
-                                                                        placeholder="Username"
-                                                                    />
-                                                                    <Input
-                                                                        value={wanForm.password}
-                                                                        onChange={e => setWanForm(f => ({ ...f, password: e.target.value }))}
-                                                                        className="h-6 text-xs bg-surface-input border-surface-border text-on-surface font-mono w-full"
-                                                                        placeholder="Password"
-                                                                    />
-                                                                </div>
-                                                            ) : (
-                                                                <div className="text-on-surface-secondary text-xs font-mono truncate" title={wan.username}>{wan.username || '—'}</div>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {isWanEditing ? (
-                                                                <select
-                                                                    value={wanForm.ip_mode}
-                                                                    onChange={e => setWanForm(f => ({ ...f, ip_mode: e.target.value }))}
-                                                                    className="h-6 text-[10px] bg-surface-input border border-surface-border text-on-surface rounded px-1"
-                                                                >
-                                                                    <option value="IPv4">IPv4</option>
-                                                                    <option value="IPv6">IPv6</option>
-                                                                    <option value="Dual Stack">Dual</option>
-                                                                </select>
-                                                            ) : (
-                                                                <span className="text-on-surface-secondary text-xs">{wan.ip_mode || '—'}</span>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {isWanEditing ? (
-                                                                <select
-                                                                    value={wanForm.enable}
-                                                                    onChange={e => setWanForm(f => ({ ...f, enable: e.target.value }))}
-                                                                    className="h-6 text-[10px] bg-surface-input border border-surface-border text-on-surface rounded px-1"
-                                                                >
-                                                                    <option value="true">On</option>
-                                                                    <option value="false">Off</option>
-                                                                </select>
-                                                            ) : (
-                                                                <Badge variant={isEnabled(wan.enable) ? 'success' : 'warning'} className="text-[9px]">
-                                                                    {isEnabled(wan.enable) ? 'On' : 'Off'}
-                                                                </Badge>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell className="text-right">
-                                                            {isWanEditing ? (
-                                                                <div className="flex gap-0.5 justify-end">
-                                                                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-green-400 hover:text-green-300"
-                                                                        onClick={() => handleWanSave(wan)} disabled={wanSaving}>
-                                                                        {wanSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                                                                    </Button>
-                                                                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
-                                                                        onClick={() => setWanEditKey(null)} disabled={wanSaving}>
-                                                                        <X className="w-3 h-3" />
-                                                                    </Button>
-                                                                </div>
-                                                            ) : (
-                                                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-on-surface-secondary hover:text-on-surface"
-                                                                    onClick={() => handleWanEdit(wan)}>
-                                                                    <Pencil className="w-3 h-3" />
-                                                                </Button>
-                                                            )}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                )
-                                            })}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                    ) : <div className="text-center py-8 text-on-surface-muted text-sm">No credentials available</div>}
                 </div>
-            </div>
-
-
-            {/* WiFi SSIDs */}
-            {wifiList.length > 0 && (
-                <Card className="bg-surface border-surface-border">
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-base text-on-surface flex items-center gap-2">
-                            <Wifi className="w-4 h-4 text-cyan-400" /> WiFi Configuration
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="border-surface-border hover:bg-transparent">
-                                    <TableHead className="text-on-surface-secondary w-12">#</TableHead>
-                                    <TableHead className="text-on-surface-secondary w-16">Band</TableHead>
-                                    <TableHead className="text-on-surface-secondary">SSID</TableHead>
-                                    <TableHead className="text-on-surface-secondary">Password</TableHead>
-                                    <TableHead className="text-on-surface-secondary w-24">Channel</TableHead>
-                                    <TableHead className="text-on-surface-secondary w-24">Status</TableHead>
-                                    <TableHead className="text-on-surface-secondary w-24 text-right">Action</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {wifiList.map((wifi) => {
-                                    const isEditing = wifiEditIdx === wifi.idx
-                                    return (
-                                        <TableRow key={wifi.idx} className={`border-surface-border ${isEditing ? 'bg-blue-500/5' : ''}`}>
-                                            <TableCell className="text-on-surface-secondary text-sm">{wifi.idx}</TableCell>
-                                            <TableCell>
-                                                <Badge variant={parseInt(wifi.channel) >= 36 ? 'warning' : 'info'} className="text-[10px] px-1.5 py-0">
-                                                    {parseInt(wifi.channel) >= 36 ? '5G' : '2.4G'}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                                {isEditing ? (
-                                                    <Input
-                                                        value={wifiForm.ssid}
-                                                        onChange={e => setWifiForm(f => ({ ...f, ssid: e.target.value }))}
-                                                        className="h-7 text-sm bg-surface-input border-surface-border text-on-surface"
-                                                        placeholder="SSID"
-                                                    />
-                                                ) : (
-                                                    <span className="text-on-surface font-medium text-sm">{wifi.ssid}</span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                {isEditing ? (
-                                                    <Input
-                                                        value={wifiForm.password}
-                                                        onChange={e => setWifiForm(f => ({ ...f, password: e.target.value }))}
-                                                        className="h-7 text-sm bg-surface-input border-surface-border text-on-surface font-mono"
-                                                        placeholder="Password"
-                                                    />
-                                                ) : (
-                                                    <span className="text-on-surface-secondary text-sm font-mono">{wifi.password || '—'}</span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                {isEditing ? (
-                                                    <Input
-                                                        value={wifiForm.channel}
-                                                        onChange={e => setWifiForm(f => ({ ...f, channel: e.target.value }))}
-                                                        className="h-7 text-sm bg-surface-input border-surface-border text-on-surface font-mono w-20"
-                                                        placeholder="Ch"
-                                                    />
-                                                ) : (
-                                                    <span className="text-on-surface-secondary text-sm font-mono">{wifi.channel}</span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                {isEditing ? (
-                                                    <button
-                                                        onClick={() => setWifiForm(f => ({ ...f, enable: f.enable === 'true' ? 'false' : 'true' }))}
-                                                        className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md transition-colors ${wifiForm.enable === 'true'
-                                                            ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                                                            : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                                                            }`}
-                                                    >
-                                                        {wifiForm.enable === 'true' ? <><Wifi className="w-3 h-3" /> On</> : <><WifiOff className="w-3 h-3" /> Off</>}
-                                                    </button>
-                                                ) : (
-                                                    isEnabled(wifi.enable) ? (
-                                                        <span className="inline-flex items-center gap-1 text-emerald-400 text-xs">
-                                                            <Wifi className="w-3 h-3" /> Enabled
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center gap-1 text-on-surface-muted text-xs">
-                                                            <WifiOff className="w-3 h-3" /> Disabled
-                                                        </span>
-                                                    )
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                {isEditing ? (
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-on-surface-muted hover:text-on-surface" onClick={() => setWifiEditIdx(null)}>
-                                                            <X className="w-3.5 h-3.5" />
-                                                        </Button>
-                                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-blue-400 hover:text-blue-300" onClick={() => handleWifiSave(wifi.idx)} disabled={wifiSaving}>
-                                                            {wifiSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                                                        </Button>
-                                                    </div>
-                                                ) : (
-                                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-on-surface-muted hover:text-on-surface" onClick={() => handleWifiEdit(wifi)}>
-                                                        <Pencil className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    )
-                                })}
-                            </TableBody>
-                        </Table>
-                    </CardContent>
-                </Card>
             )}
 
-            {/* LAN Clients */}
-            {lanClients.length > 0 && (
+            {/* ═══ PARAMETERS TAB ═══ */}
+            {detailTab === 'parameters' && (
                 <Card className="bg-surface border-surface-border">
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-base text-on-surface flex items-center gap-2">
-                            <Network className="w-4 h-4 text-orange-400" /> LAN Clients
-                            <span className="text-xs text-on-surface-muted font-normal">({lanClients.length} devices)</span>
-                        </CardTitle>
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-base font-medium text-on-surface flex items-center gap-2"><HardDrive className="w-4 h-4 text-violet-400" /> TR-069 Parameters {params && <span className="text-sm text-on-surface-muted font-normal">({filteredParams.length} of {params.length})</span>}</CardTitle>
+                        <div className="relative w-64"><Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-on-surface-muted" /><Input placeholder="Filter parameters..." value={paramSearch} onChange={(e) => setParamSearch(e.target.value)} className="pl-8 h-8 text-sm bg-surface-input border-surface-border text-on-surface placeholder:text-on-surface-muted" /></div>
                     </CardHeader>
-                    <CardContent className="p-0">
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="border-surface-border hover:bg-transparent">
-                                    <TableHead className="text-on-surface-secondary">Hostname</TableHead>
-                                    <TableHead className="text-on-surface-secondary">IP Address</TableHead>
-                                    <TableHead className="text-on-surface-secondary">MAC Address</TableHead>
-                                    <TableHead className="text-on-surface-secondary">Interface</TableHead>
-                                    <TableHead className="text-on-surface-secondary">RSSI</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {lanClients.map((client, i) => (
-                                    <TableRow key={i} className="border-surface-border">
-                                        <TableCell className="text-on-surface text-sm">{client.hostname || '(unknown)'}</TableCell>
-                                        <TableCell className="text-on-surface-secondary text-sm font-mono">{client.ip}</TableCell>
-                                        <TableCell className="text-on-surface-secondary text-sm font-mono">{client.mac}</TableCell>
-                                        <TableCell>
-                                            {client.interface === 'Ethernet' ? (
-                                                <Badge variant="info" className="text-[10px]">🔌 Ethernet</Badge>
-                                            ) : (
-                                                <Badge variant="secondary" className="text-[10px] bg-cyan-500/10 text-cyan-400 border-transparent">📶 WiFi</Badge>
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="text-sm font-mono">
-                                            {client.rssi ? (
-                                                <span className={`${Number(client.rssi) > -50 ? 'text-emerald-400' :
-                                                    Number(client.rssi) > -70 ? 'text-amber-400' : 'text-red-400'
-                                                    }`}>{client.rssi} dBm</span>
-                                            ) : '—'}
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </CardContent>
+                    <CardContent className="p-0"><div className="max-h-[60vh] overflow-auto"><Table><TableHeader>
+                        <TableRow className="border-surface-border hover:bg-transparent sticky top-0 bg-surface"><TableHead className="text-on-surface-secondary">Parameter</TableHead><TableHead className="text-on-surface-secondary">Value</TableHead></TableRow>
+                    </TableHeader><TableBody>
+                            {filteredParams.length === 0 ? (
+                                <TableRow className="border-surface-border"><TableCell colSpan={2} className="text-center text-on-surface-muted py-8 text-sm">{params?.length ? 'No matching parameters' : 'No parameters available'}</TableCell></TableRow>
+                            ) : filteredParams.slice(0, 200).map((p) => (
+                                <TableRow key={p.id || p.name} className="border-surface-border"><TableCell className="text-on-surface-secondary text-xs font-mono break-all max-w-md">{p.name}</TableCell><TableCell className="text-on-surface text-xs font-mono break-all max-w-xs">{p.value || '(empty)'}</TableCell></TableRow>
+                            ))}
+                        </TableBody></Table></div></CardContent>
                 </Card>
             )}
+        </div>
+    )
+}
 
-            {/* TR-069 Parameters */}
-            <Card className="bg-surface border-surface-border">
-                <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                        <CardTitle className="text-base text-on-surface flex items-center gap-2">
-                            <HardDrive className="w-4 h-4 text-violet-400" /> TR-069 Parameters
-                            {params && <span className="text-xs text-on-surface-muted font-normal">({filteredParams.length} of {params.length})</span>}
-                        </CardTitle>
-                        <div className="relative w-64">
-                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-on-surface-muted" />
-                            <Input
-                                placeholder="Filter parameters..."
-                                value={paramSearch}
-                                onChange={(e) => setParamSearch(e.target.value)}
-                                className="pl-8 h-8 text-xs bg-surface-input border-surface-border text-on-surface placeholder:text-on-surface-muted"
-                            />
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                    <div className="max-h-96 overflow-auto">
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="border-surface-border hover:bg-transparent sticky top-0 bg-surface">
-                                    <TableHead className="text-on-surface-secondary">Parameter</TableHead>
-                                    <TableHead className="text-on-surface-secondary">Value</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {filteredParams.length === 0 ? (
-                                    <TableRow className="border-surface-border">
-                                        <TableCell colSpan={2} className="text-center text-on-surface-muted py-8">
-                                            {params?.length ? 'No matching parameters' : 'No parameters available'}
-                                        </TableCell>
-                                    </TableRow>
-                                ) : (
-                                    filteredParams.slice(0, 200).map((p) => (
-                                        <TableRow key={p.id || p.name} className="border-surface-border">
-                                            <TableCell className="text-on-surface-secondary text-xs font-mono break-all max-w-md">{p.name}</TableCell>
-                                            <TableCell className="text-on-surface text-xs font-mono break-all max-w-xs">{p.value || '(empty)'}</TableCell>
-                                        </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-                </CardContent>
-            </Card>
+/* ── Topology Helpers ── */
+const colorMap: Record<string, string> = {
+    blue: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+    violet: 'bg-violet-500/15 text-violet-400 border-violet-500/30',
+    cyan: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',
+    emerald: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
+    green: 'bg-green-500/15 text-green-400 border-green-500/30',
+    red: 'bg-red-500/15 text-red-400 border-red-500/30',
+    gray: 'bg-surface-input text-on-surface-muted border-surface-border',
+}
+
+function TopoNode({ icon, color, label, title, subtitle, status, extra }: {
+    icon: React.ReactNode; color: string; label: string; title: string;
+    subtitle?: string; status?: string; extra?: string
+}) {
+    const c = colorMap[color] || colorMap.gray
+    return (
+        <div className={`flex flex-col items-center min-w-[80px] px-2 py-1.5 rounded-lg border ${c} transition-all`}>
+            <div className="mb-0.5">{icon}</div>
+            <div className="text-[8px] uppercase tracking-wider opacity-70">{label}</div>
+            <div className="text-[10px] font-semibold text-center leading-tight max-w-[75px] truncate" title={title}>{title}</div>
+            {subtitle && <div className="text-[9px] opacity-60 truncate max-w-[75px]" title={subtitle}>{subtitle}</div>}
+            {status && status !== 'none' && (
+                <div className={`text-[8px] mt-0.5 px-1 py-0 rounded-full ${status === 'working' || status === 'online' || status === 'active'
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-red-500/20 text-red-400'
+                    }`}>{status}</div>
+            )}
+            {extra && <div className="text-[9px] font-mono mt-0.5 text-amber-400">{extra}</div>}
+        </div>
+    )
+}
+
+function TopoArrow() {
+    return (
+        <div className="flex items-center px-1 shrink-0">
+            <div className="w-6 h-px bg-surface-border" />
+            <ChevronRight className="w-3.5 h-3.5 text-on-surface-muted -ml-1" />
         </div>
     )
 }

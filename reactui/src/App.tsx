@@ -8,6 +8,8 @@ import CpeDetailPage from '@/pages/CpeDetail'
 import SystemStatusPage from '@/pages/SystemStatus'
 import SettingsPage from '@/pages/Settings'
 import LogsPage from '@/pages/Logs'
+import OltDevicesPage from '@/pages/OltDevices'
+import OdcOdpPage from '@/pages/OdcOdp'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +34,8 @@ export default function App() {
             <Route path="/system" element={<SystemStatusPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/logs" element={<LogsPage />} />
+            <Route path="/olt" element={<OltDevicesPage />} />
+            <Route path="/odc-odp" element={<OdcOdpPage />} />
             <Route path="/" element={<Navigate to="/overview" replace />} />
           </Route>
         </Routes>

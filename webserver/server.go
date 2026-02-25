@@ -48,6 +48,7 @@ var sessionSkips = []string{
 	"/admin/login",
 	"/static",
 	"/reactui",
+	"/public",
 }
 
 var jwtSkips = []string{

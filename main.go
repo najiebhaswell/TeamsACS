@@ -13,6 +13,7 @@ import (
 	"github.com/ca17/teamsacs/config"
 	"github.com/ca17/teamsacs/controllers"
 	"github.com/ca17/teamsacs/installer"
+	"github.com/ca17/teamsacs/snmp"
 	"github.com/ca17/teamsacs/tr069"
 	"github.com/ca17/teamsacs/webserver"
 	"golang.org/x/sync/errgroup"
@@ -76,6 +77,10 @@ func main() {
 	app.InitGlobalApplication(_config)
 
 	app.GApp().MigrateDB(false)
+
+	// Start OLT SNMP poller (background, 5 min interval)
+	oltPoller := snmp.NewOLTPoller(5)
+	go oltPoller.Start()
 
 	defer app.Release()
 

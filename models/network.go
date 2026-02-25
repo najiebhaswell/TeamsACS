@@ -49,6 +49,7 @@ type NetCpe struct {
 	LanClients     string    `gorm:"type:text" json:"lan_clients" form:"lan_clients"` // Connected devices (JSON)
 	CwmpLastInform time.Time `json:"cwmp_last_inform" `                               // CWMP last inform time
 	Remark         string    `json:"remark" form:"remark"`                            // Remark
+	OdpID          int64     `gorm:"index" json:"odp_id,string" form:"odp_id"`        // ODP assignment
 	CreatedAt      time.Time `json:"created_at" `
 	UpdatedAt      time.Time `json:"updated_at"`
 }

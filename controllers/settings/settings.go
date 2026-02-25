@@ -2,7 +2,10 @@ package settings
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -119,6 +122,81 @@ func InitRouter() {
 		})
 		c.Response().Header().Set("Content-Disposition", "attachment;filename=mikrotik_cpe_setup_tr069.rsc")
 		return c.String(http.StatusOK, ret)
+	})
+
+	// Logo upload
+	webserver.POST("/admin/settings/logo/upload", func(c echo.Context) error {
+		file, err := c.FormFile("logo")
+		if err != nil {
+			return c.JSON(http.StatusOK, web.RestError("No file uploaded"))
+		}
+		// Validate file type
+		ext := strings.ToLower(filepath.Ext(file.Filename))
+		if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".svg" && ext != ".webp" {
+			return c.JSON(http.StatusOK, web.RestError("Invalid file type. Use PNG, JPG, SVG, or WebP"))
+		}
+		// Validate size (max 2MB)
+		if file.Size > 2*1024*1024 {
+			return c.JSON(http.StatusOK, web.RestError("File too large. Max 2MB"))
+		}
+
+		src, err := file.Open()
+		if err != nil {
+			return c.JSON(http.StatusOK, web.RestError("Failed to read file"))
+		}
+		defer src.Close()
+
+		// Ensure directory exists
+		logoDir := "/var/teamsacs/public"
+		os.MkdirAll(logoDir, 0755)
+
+		// Save as logo with original extension
+		logoPath := filepath.Join(logoDir, "logo"+ext)
+		// Remove any previous logo files
+		for _, e := range []string{".png", ".jpg", ".jpeg", ".svg", ".webp"} {
+			os.Remove(filepath.Join(logoDir, "logo"+e))
+		}
+
+		dst, err := os.Create(logoPath)
+		if err != nil {
+			return c.JSON(http.StatusOK, web.RestError("Failed to save file"))
+		}
+		defer dst.Close()
+
+		if _, err = io.Copy(dst, src); err != nil {
+			return c.JSON(http.StatusOK, web.RestError("Failed to write file"))
+		}
+
+		webserver.PubOpLog(c, fmt.Sprintf("Uploaded custom logo: %s", file.Filename))
+		return c.JSON(http.StatusOK, web.RestSucc("Logo uploaded successfully"))
+	})
+
+	// Logo info (check if exists)
+	webserver.GET("/admin/settings/logo/info", func(c echo.Context) error {
+		for _, ext := range []string{".png", ".jpg", ".jpeg", ".svg", ".webp"} {
+			logoPath := filepath.Join("/var/teamsacs/public", "logo"+ext)
+			if _, err := os.Stat(logoPath); err == nil {
+				return c.JSON(http.StatusOK, map[string]interface{}{
+					"exists": true,
+					"url":    "/public/logo/logo" + ext,
+				})
+			}
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{"exists": false})
+	})
+
+	// Serve logo (public, no auth needed)
+	webserver.GET("/public/logo/:file", func(c echo.Context) error {
+		filename := c.Param("file")
+		// Security: only allow logo files
+		if !strings.HasPrefix(filename, "logo.") {
+			return c.NoContent(http.StatusNotFound)
+		}
+		logoPath := filepath.Join("/var/teamsacs/public", filename)
+		if _, err := os.Stat(logoPath); os.IsNotExist(err) {
+			return c.NoContent(http.StatusNotFound)
+		}
+		return c.File(logoPath)
 	})
 
 }

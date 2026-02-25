@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type ApiResponse } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-import { Cog, Radio, Save, Check, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Cog, Radio, Save, Check, Eye, EyeOff, Loader2, Image, Upload, Trash2 } from 'lucide-react'
 
 interface ConfigItem {
     name: string
@@ -236,6 +236,133 @@ export default function SettingsPage() {
                     )}
                 </CardContent>
             </Card>
+
+            {/* Logo Upload */}
+            <LogoUploadCard showToast={(type: 'success' | 'error', msg: string) => {
+                setToast({ type, msg })
+                setTimeout(() => setToast(null), 3000)
+            }} />
         </div>
+    )
+}
+
+function LogoUploadCard({ showToast }: { showToast: (type: 'success' | 'error', msg: string) => void }) {
+    const fileRef = useRef<HTMLInputElement>(null)
+    const [uploading, setUploading] = useState(false)
+    const [logoInfo, setLogoInfo] = useState<{ exists: boolean; url?: string } | null>(null)
+
+    const fetchLogoInfo = () => {
+        fetch('/admin/settings/logo/info', { credentials: 'include' })
+            .then(r => r.json())
+            .then(d => setLogoInfo(d))
+            .catch(() => { })
+    }
+
+    useEffect(() => { fetchLogoInfo() }, [])
+
+    // Resize image using canvas before upload
+    const resizeImage = (file: File): Promise<Blob> => {
+        return new Promise((resolve, reject) => {
+            // SVG: skip resize
+            if (file.type === 'image/svg+xml') {
+                resolve(file)
+                return
+            }
+            const img = new window.Image()
+            img.onload = () => {
+                const MAX_W = 360, MAX_H = 115
+                let w = img.width, h = img.height
+                // Scale down maintaining aspect ratio
+                if (w > MAX_W || h > MAX_H) {
+                    const ratio = Math.min(MAX_W / w, MAX_H / h)
+                    w = Math.round(w * ratio)
+                    h = Math.round(h * ratio)
+                }
+                const canvas = document.createElement('canvas')
+                canvas.width = w
+                canvas.height = h
+                const ctx = canvas.getContext('2d')!
+                ctx.drawImage(img, 0, 0, w, h)
+                canvas.toBlob(blob => {
+                    if (blob) resolve(blob)
+                    else reject(new Error('Failed to resize'))
+                }, 'image/png')
+            }
+            img.onerror = () => reject(new Error('Failed to load image'))
+            img.src = URL.createObjectURL(file)
+        })
+    }
+
+    const handleUpload = async (file: File) => {
+        setUploading(true)
+        try {
+            const resized = await resizeImage(file)
+            const fd = new FormData()
+            fd.append('logo', resized, 'logo.png')
+            const res = await fetch('/admin/settings/logo/upload', {
+                method: 'POST',
+                body: fd,
+                credentials: 'include',
+            })
+            const data = await res.json()
+            if (data.code === 0) {
+                showToast('success', 'Logo uploaded!')
+                fetchLogoInfo()
+            } else {
+                showToast('error', data.msg || 'Upload failed')
+            }
+        } catch {
+            showToast('error', 'Upload failed')
+        } finally {
+            setUploading(false)
+            if (fileRef.current) fileRef.current.value = ''
+        }
+    }
+
+    return (
+        <Card className="bg-surface border-surface-border">
+            <CardHeader className="pb-4">
+                <CardTitle className="text-base text-on-surface flex items-center gap-2">
+                    <Image className="w-4 h-4 text-violet-400" />
+                    Custom Logo
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="flex items-start gap-6">
+                    {/* Preview */}
+                    <div className="w-48 h-16 rounded-lg border border-dashed border-surface-border flex items-center justify-center bg-surface-input overflow-hidden shrink-0">
+                        {logoInfo?.exists && logoInfo.url ? (
+                            <img src={logoInfo.url + '?t=' + Date.now()} alt="Current logo" className="max-h-14 max-w-[180px] object-contain" />
+                        ) : (
+                            <span className="text-xs text-on-surface-muted">No logo set</span>
+                        )}
+                    </div>
+
+                    {/* Upload */}
+                    <div className="flex-1 space-y-3">
+                        <p className="text-sm text-on-surface-secondary">
+                            Upload a logo (PNG, JPG, SVG, WebP). Auto-resized to fit sidebar.
+                        </p>
+                        <input
+                            ref={fileRef}
+                            type="file"
+                            accept=".png,.jpg,.jpeg,.svg,.webp"
+                            className="hidden"
+                            onChange={e => { if (e.target.files?.[0]) handleUpload(e.target.files[0]) }}
+                        />
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => fileRef.current?.click()}
+                            disabled={uploading}
+                            className="border-surface-border text-on-surface-secondary hover:bg-surface-hover"
+                        >
+                            {uploading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Upload className="w-4 h-4 mr-1" />}
+                            {uploading ? 'Uploading...' : 'Choose File'}
+                        </Button>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
     )
 }

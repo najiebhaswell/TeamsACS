@@ -11,8 +11,10 @@ import {
     Moon,
     Sun,
     FileText,
+    Server,
+    Cable,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/lib/theme'
 
@@ -21,6 +23,8 @@ const navItems = [
     { to: '/cpe', label: 'CPE Devices', icon: MonitorSmartphone },
     { to: '/system', label: 'System Status', icon: Activity },
     { to: '/logs', label: 'Logs', icon: FileText },
+    { to: '/olt', label: 'OLT Devices', icon: Server },
+    { to: '/odc-odp', label: 'ODC & ODP', icon: Cable },
     { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
@@ -28,6 +32,25 @@ export default function Layout() {
     const navigate = useNavigate()
     const [sidebarOpen, setSidebarOpen] = useState(false)
     const { theme, toggleTheme } = useTheme()
+    const [logoUrl, setLogoUrl] = useState<string | null>(() => {
+        return localStorage.getItem('teamsacs-logo-url')
+    })
+
+    useEffect(() => {
+        fetch('/admin/settings/logo/info', { credentials: 'include' })
+            .then(r => r.json())
+            .then(d => {
+                if (d.exists && d.url) {
+                    const url = d.url + '?t=' + Date.now()
+                    setLogoUrl(url)
+                    localStorage.setItem('teamsacs-logo-url', d.url)
+                } else {
+                    setLogoUrl(null)
+                    localStorage.removeItem('teamsacs-logo-url')
+                }
+            })
+            .catch(() => { })
+    }, [])
 
     const handleLogout = () => {
         window.location.href = '/logout'
@@ -47,13 +70,19 @@ export default function Layout() {
             )}>
                 {/* Logo */}
                 <div className="h-16 flex items-center gap-3 px-6 border-b border-surface-border">
-                    <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                        <Wifi className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                        <div className="font-bold text-lg leading-tight">TeamsACS</div>
-                        <div className="text-[10px] text-on-surface-muted uppercase tracking-wider">Management</div>
-                    </div>
+                    {logoUrl ? (
+                        <img src={logoUrl} alt="Logo" className="h-9 max-w-[180px] object-contain" />
+                    ) : (
+                        <>
+                            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                <Wifi className="w-5 h-5 text-white" />
+                            </div>
+                            <div>
+                                <div className="font-bold text-lg leading-tight">TeamsACS</div>
+                                <div className="text-[10px] text-on-surface-muted uppercase tracking-wider">Management</div>
+                            </div>
+                        </>
+                    )}
                     <button className="ml-auto lg:hidden text-on-surface-secondary hover:text-on-surface" onClick={() => setSidebarOpen(false)}>
                         <X className="w-5 h-5" />
                     </button>
